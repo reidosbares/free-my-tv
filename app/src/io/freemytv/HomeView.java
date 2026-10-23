@@ -529,6 +529,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     @Override public void onData() {
         wake();
         layoutDrawer();   // the football card may have appeared, gone, or changed its row count
+        layoutHomeFootball();
         updatePalette();
         checkNight(true);
         layoutStatus();
@@ -1888,6 +1889,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawText(fbFixture, t.left + 24 * k, t.top + (footballWide ? 50 : 46) * k, fbTeamTitle);
             c.drawText(fbWhen, t.left + 24 * k, t.top + (footballWide ? 90 : 82) * k, fbTeamSub);
         }
+        // The same paints as the drawer's cards; set here too, since beside the clock the drawer may not have drawn yet.
+        cardTitle.setColor(tone(L_DIM, 0xB3FFFFFF));
+        cardDim.setColor(tone(L_DIM, 0xADFFFFFF));
+        cardDimRight.setColor(tone(L_FAINT, 0x99FFFFFF));
         if (footballWide) c.drawText(Ui.tr("Today"), x, footballListTop - 20 * k, cardTitle);
         fbRow.setColor(drawerInk(0.95f));
         fbRowTime.setColor(tone(L_DIM, 0xADFFFFFF));
@@ -2902,7 +2907,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     // MARK: - Light design: title, tabs, cards and icon-only buttons
 
+    /** Beside the clock: the right half above the shelf, which the clock layout leaves empty. */
+    private void layoutHomeFootball() {
+        if (!footballPlacement().equals("home")) return;
+        footballCard.set(900 * k, 250 * k, CONTENT_R * k, 770 * k);
+        layoutFootball(true);
+        heroDirty = true;
+    }
+
     private void layoutLight() {
+        layoutHomeFootball();
         if (lTab == null) return;
         // Text tabs; the focus pill extends 26 px past the text (the first tab's text starts at the margin).
         float pad = 26 * k, tabTop = L_TABBAR_TOP * k, tabBottom = (L_TABBAR_TOP + L_TABBAR_H) * k;
@@ -2994,6 +3008,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (!picksOn()) {
             drawClock(c);
             if (HomeData.coinCount() > 0) drawQuotes(c);
+            if (footballPlacement().equals("home")) drawFootballCard(c, footballCard, true);
             return;
         }
         String hello = Ui.tr("For You");
