@@ -77,7 +77,7 @@ The reference mockups (browser approximations with SVG filters) are in
   trying it: too weak. Surprise me = an Unsplash search for "wallpaper <word>", the word picked at random for each new
   photo, never the same twice in a row, from: mountains, ocean, forest, desert, night sky, aurora, lake, waterfall,
   clouds, snow, sunset, minimal, city lights, coast, canyon, sports.)* Each is a set of Unsplash photos in landscape
-  orientation. Nature, Travel and Architecture map to Unsplash's curated topics; Aerials to a search (aerial / drone
+  orientation. Nature and Architecture map to Unsplash's curated topics; Aerials to a search (aerial / drone
   photography); Abstract to Unsplash's abstract photos (fluid art, gradients, 3D renders). The exact topics and
   queries are the builder's to pick and check against the API; the bar is "every photo looks like a wallpaper."
 - **Three new rows in Home Settings** (after Theme):
