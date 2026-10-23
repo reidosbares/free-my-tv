@@ -113,6 +113,18 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private final Paint black = new Paint();
     private final Paint shadowPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Paint glassPaint = new Paint();
+    private final Paint bakedPaint = new Paint();
+    private final Rect clockInk = new Rect();
+    // Without photos: the clock baked as frosted glass in the background (works without AGSL).
+    private final GlassClock glassClock = new GlassClock(r -> {
+        if (!worker.isShutdown()) worker.execute(r);
+    }, handler);
+    private final GlassMath.Look fallbackLook = new GlassMath.Look();
+    private final Runnable onGlassClock = () -> {
+        dirty = true;
+        invalidate();
+    };
+    private GlassMath.Sampler fallbackBg;
     private final Set<String> failed = new HashSet<>();     // Recs.key: a movie and a series can have the same ID
     private RuntimeShader glassShader;
     private boolean running, dirty = true, chromeDirty = true;
@@ -127,7 +139,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private float k = 1;
     private long minute = -1;
     private String clock = "", date = "";
-    private Paint datePaint, clockPaint, weatherPaint, weatherDim, linePaint;
+    private Paint datePaint, clockPaint, clockFlat, weatherPaint, weatherDim, linePaint;
     private Paint cornerDate, cornerLine, cornerClock, labelPaint, metaPaint;
     private TextPaint titlePaint;
 
@@ -206,6 +218,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         if (!gone.isEmpty()) handler.postDelayed(() -> { for (Bitmap b : gone) b.recycle(); }, 1000);
         current = incoming = prepared = null;
         glass = null;
+        glassClock.release();
+        dirty = true;
         slides = 0;
         glassFor = "";
     }
@@ -235,9 +249,13 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         // Without photos (the clock over the aurora).
         datePaint = Ui.text(Ui.semibold, 36 * k, 0xD9FFFFFF);
         datePaint.setTextAlign(Paint.Align.CENTER);
-        clockPaint = Ui.numbers(Ui.thin, 280 * k, 0xF2FFFFFF);
-        clockPaint.setTextAlign(Paint.Align.CENTER);
-        clockPaint.setLetterSpacing(-0.01f);
+        clockPaint = Ui.numbers(Ui.bold, 280 * k, 0xF2FFFFFF);
+        clockPaint.setLetterSpacing(-0.03f);
+        // Until the glass is baked: the same digits in white, with a soft shadow.
+        clockFlat = new Paint(clockPaint);
+        clockFlat.setShadowLayer(18 * k, 0, 6 * k, 0x47000000);
+        fallbackBg = GlassMath.vertical(scene.palette.color(1), scene.palette.color(0), h);
+        fallbackLook.refraction = 7 * k;
         weatherPaint = Ui.numbers(Ui.medium, 30 * k, 0xC7FFFFFF);
         weatherDim = Ui.numbers(Ui.regular, 28 * k, 0x80FFFFFF);
         linePaint = Ui.numbers(Ui.medium, 24 * k, 0x99FFFFFF);
@@ -698,7 +716,13 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         float clockCap = Ui.cap(clockPaint);
         float clockBase = h * 0.5f + clockCap / 2 - 10 * k;
         c.drawText(date, cx, clockBase - clockCap - 34 * k, datePaint);
-        c.drawText(clock, cx, clockBase, clockPaint);
+        // Centred on its ink, as frosted glass once baked (it drifts with `content`).
+        clockPaint.getTextBounds(clock, 0, clock.length(), clockInk);
+        float left = Math.round(cx - clockInk.width() / 2f);
+        glassClock.request(clock, clockPaint, left, clockBase, fallbackBg, fallbackLook, onGlassClock);
+        Bitmap baked = glassClock.bitmap();
+        if (baked != null) c.drawBitmap(baked, glassClock.x(), glassClock.y(), bakedPaint);
+        else c.drawText(clock, left - clockInk.left, clockBase, clockFlat);
 
         // Weather: symbol, temperature, high and low, centered under the clock.
         HomeData.Weather wx = data.weather;
