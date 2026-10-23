@@ -524,9 +524,9 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
             Glass g = glass;
             if (g != null && glassShader != null) {
-                // The shadow under the glass: sets the digits apart from a bright photo.
+                // The shadow under the glass (already shifted down): sets the digits apart from a bright photo.
                 shadowPaint.setAlpha(140);
-                c.drawBitmap(g.shadow, g.x, g.y + 6 * k, shadowPaint);
+                c.drawBitmap(g.shadow, g.x, g.y, shadowPaint);
             } else {
                 Rect ink = new Rect();
                 cornerClock.getTextBounds(clock, 0, clock.length(), ink);
@@ -605,57 +605,19 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         int[] px = new int[w * h];
         cover.getPixels(px, 0, w, 0, 0, w, h);
         int[] alpha = new int[px.length];
-        for (int i = 0; i < px.length; i++) alpha[i] = (px[i] >>> 24) * 16;
-        int[] height = blur(alpha, w, h, Math.max(2, Math.round(6 * k)), 3);
-        int[] soft = blur(alpha, w, h, Math.max(3, Math.round(12 * k)), 3);
-        float max = 1;
-        for (int y = 1; y < h - 1; y++) {
-            for (int x = 1; x < w - 1; x++) {
-                int i = y * w + x;
-                float gx = height[i + 1] - height[i - 1], gy = height[i + w] - height[i - w];
-                max = Math.max(max, (float) Math.sqrt(gx * gx + gy * gy));
-            }
-        }
+        for (int i = 0; i < px.length; i++) alpha[i] = px[i] >>> 24;
+        GlassMath.Mask m = GlassMath.mask(alpha, w, h, k);
         int[] slope = new int[px.length], shadow = new int[px.length];
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                int i = y * w + x;
-                float gx = x > 0 && x < w - 1 ? height[i + 1] - height[i - 1] : 0;
-                float gy = y > 0 && y < h - 1 ? height[i + w] - height[i - w] : 0;
-                int r = 128 + Math.round(127 * gx / max), g = 128 + Math.round(127 * gy / max);
-                int b = Math.min(255, height[i] / 16);
-                slope[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
-                shadow[i] = Math.min(255, soft[i] / 16) << 24;
-            }
+        for (int i = 0; i < px.length; i++) {
+            // The shader wants the slope pointing into the stroke: the opposite of the mask's normal.
+            int r = 128 - Math.round(127 * m.nx[i]), g = 128 - Math.round(127 * m.ny[i]);
+            int b = Math.round(255 * m.height[i]);
+            slope[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
+            shadow[i] = Math.round(255 * m.shadow[i]) << 24;
         }
         int x = Math.round(right - ink.width()) - pad, y = Math.round(top) - pad;
         return new Glass(text, Bitmap.createBitmap(slope, w, h, Bitmap.Config.ARGB_8888), cover,
                 Bitmap.createBitmap(shadow, w, h, Bitmap.Config.ARGB_8888), x, y, pad, Math.max(1, ink.height()));
-    }
-
-    /** Box blur (passes of radius r in both directions); anything outside the image counts as empty. */
-    private static int[] blur(int[] src, int w, int h, int r, int passes) {
-        int[] a = src.clone(), b = new int[src.length];
-        for (int pass = 0; pass < passes; pass++) {
-            box(a, b, w, h, r, true);
-            box(b, a, w, h, r, false);
-        }
-        return a;
-    }
-
-    private static void box(int[] in, int[] out, int w, int h, int r, boolean horizontal) {
-        int n = horizontal ? w : h, lines = horizontal ? h : w, step = horizontal ? 1 : w, lineStep = horizontal ? w : 1;
-        int div = 2 * r + 1;
-        for (int line = 0; line < lines; line++) {
-            int base = line * lineStep, sum = 0;
-            for (int i = 0; i <= r && i < n; i++) sum += in[base + i * step];
-            for (int i = 0; i < n; i++) {
-                out[base + i * step] = (sum + div / 2) / div;
-                int add = i + r + 1, sub = i - r;
-                if (add < n) sum += in[base + add * step];
-                if (sub >= 0) sum -= in[base + sub * step];
-            }
-        }
     }
 
     // MARK: - Photo caption (bottom left)
