@@ -103,6 +103,31 @@ final class Backgrounds {
     /** current.jpg, for Home Settings' preview (read it off the UI thread). */
     File currentFile() { return file("current.jpg"); }
 
+    // MARK: - Read-only, for the screensaver (another process on Android 11): the files, no singleton, no writes
+
+    /** current.jpg when state.json says there is a current photo (Plain deletes both); null otherwise. Off the UI thread. */
+    static File currentFile(Context c) {
+        File f = new File(new File(c.getFilesDir(), "backgrounds"), "current.jpg");
+        return savedCurrent(c) != null && f.exists() ? f : null;
+    }
+
+    /** The current photo's author from state.json ("" when unknown). Off the UI thread. */
+    static String currentAuthor(Context c) {
+        JSONObject o = savedCurrent(c);
+        return o == null ? "" : o.optString("author").trim();
+    }
+
+    private static JSONObject savedCurrent(Context c) {
+        File f = new File(new File(c.getFilesDir(), "backgrounds"), "state.json");
+        if (!f.exists()) return null;
+        try (FileInputStream in = new FileInputStream(f)) {
+            JSONObject o = new JSONObject(read(in)).optJSONObject("current");
+            return o == null || o.optString("id").isEmpty() ? null : o;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Home Settings opened: reads the state if it wasn't, says so, and fetches the next photo if it's missing. */
     void prepare() {
         io.execute(() -> {
@@ -228,6 +253,11 @@ final class Backgrounds {
     }
 
     private static Backdrop decode(File f) throws IOException {
+        return Backdrop.photo(decodeFile(f));
+    }
+
+    /** The photo at about the UI's width (halved while it stays wider), for Backdrop to crop. */
+    static Bitmap decodeFile(File f) throws IOException {
         if (!f.exists()) throw new IOException();
         BitmapFactory.Options bounds = new BitmapFactory.Options();
         bounds.inJustDecodeBounds = true;
@@ -237,7 +267,7 @@ final class Backgrounds {
         while (bounds.outWidth / (opts.inSampleSize * 2) >= Backdrop.W) opts.inSampleSize *= 2;
         Bitmap b = BitmapFactory.decodeFile(f.getPath(), opts);
         if (b == null) throw new IOException();
-        return Backdrop.photo(b);
+        return b;
     }
 
     /** current.jpg couldn't be decoded: unreadable, it goes (out of memory, it stays for current() to try again). */

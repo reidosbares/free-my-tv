@@ -9,6 +9,7 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.RadialGradient;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.RuntimeShader;
 import android.graphics.Shader;
 import android.os.Handler;
@@ -37,7 +38,8 @@ import java.util.concurrent.Executors;
  *    through the digits, bent at the edges; Shaders.GLASS_TEXT) and today's next football game (FootballData);
  *  - bottom left, the photo's caption: the time-of-day label ("TONIGHT"), the title, and genre · runtime · service.
  * Dark scrims only where there is text, stronger where the photo is bright. Any key exits (as on Apple TV).
- * Without photos (no TMDB key, or before the first fetch): the big clock over the night aurora.
+ * Without photos (no TMDB key, or before the first fetch): the big clock over the night aurora, or over the home
+ * screen's Unsplash photo when it has one (read from its files: on Android 11 this runs in another process).
  */
 final class DreamView extends View implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
     private static final long SHOW_MS = 30_000, FADE_MS = 3_000, FIRST_MS = 1_600;
@@ -125,6 +127,17 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         invalidate();
     };
     private GlassMath.Sampler fallbackBg;
+    // Without picks: the home screen's Unsplash photo, loaded at start (null: the aurora, as before).
+    private Backdrop bgPhoto;
+    private GlassMath.Sampler photoBg;
+    private boolean photoPending;
+    private long photoAt;
+    private String photoAuthor = "", creditText = "";
+    private int creditGeneration = -1;
+    private final Rect screenRect = new Rect();
+    private final RectF bubble = new RectF();
+    private final Paint bubbleFill = new Paint(Paint.ANTI_ALIAS_FLAG), bubbleRim = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private Paint creditPaint;
     private final Set<String> failed = new HashSet<>();     // Recs.key: a movie and a series can have the same ID
     private RuntimeShader glassShader;
     private boolean running, dirty = true, chromeDirty = true;
@@ -185,6 +198,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         lastFrame = 0;
         failed.clear();
         fallback = recs.showcase().isEmpty();
+        loadPhoto();
         data.addListener(this);
         football.addListener(this);
         recs.addListener(this);
@@ -219,6 +233,14 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         current = incoming = prepared = null;
         glass = null;
         glassClock.release();
+        final Backdrop photo = bgPhoto;
+        bgPhoto = null;
+        photoBg = null;
+        photoPending = false;
+        if (photo != null) handler.postDelayed(() -> {
+            photo.image.recycle();
+            if (photo.frostImage != null) photo.frostImage.recycle();
+        }, 1000);
         dirty = true;
         slides = 0;
         glassFor = "";
@@ -256,6 +278,15 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         clockFlat.setShadowLayer(18 * k, 0, 6 * k, 0x47000000);
         fallbackBg = GlassMath.vertical(scene.palette.color(1), scene.palette.color(0), h);
         fallbackLook.refraction = 7 * k;
+        screenRect.set(0, 0, w, h);
+        if (bgPhoto != null) photoBg = GlassMath.grid(bgPhoto.frost, Backdrop.FW, Backdrop.FH, w, h);
+        creditPaint = Ui.text(Ui.medium, 22 * k, 0x99FFFFFF);
+        creditPaint.setTextAlign(Paint.Align.RIGHT);
+        creditPaint.setShadowLayer(22 * k, 0, 2 * k, 0x59000000);
+        bubbleRim.setStyle(Paint.Style.STROKE);
+        bubbleRim.setStrokeWidth(1.5f * k);
+        bubbleRim.setColor(0x33FFFFFF);
+        creditGeneration = -1;
         weatherPaint = Ui.numbers(Ui.medium, 30 * k, 0xC7FFFFFF);
         weatherDim = Ui.numbers(Ui.regular, 28 * k, 0x80FFFFFF);
         linePaint = Ui.numbers(Ui.medium, 24 * k, 0x99FFFFFF);
@@ -686,15 +717,71 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         }
     }
 
-    // MARK: - Without photos: the big clock over the aurora
+    // MARK: - Without photos: the big clock over the aurora (or the home screen's photo)
+
+    /**
+     * Without picks, the home screen's Unsplash photo, when it has one: decoded on the worker; until then black (a few
+     * hundred ms), then it fades in. No photo (Plain, no key, a missing or unreadable file): the aurora, as before.
+     */
+    private void loadPhoto() {
+        if (!fallback || !Backgrounds.hasKey() || Recs.hasKey(getContext())) return;
+        photoPending = true;
+        final int gen = generation;
+        final Context app = getContext().getApplicationContext();
+        worker.execute(() -> {
+            Backdrop b = null;
+            String author = "";
+            try {
+                File f = Backgrounds.currentFile(app);
+                if (f != null) {
+                    b = Backdrop.dream(Backgrounds.decodeFile(f));
+                    author = Backgrounds.currentAuthor(app);
+                }
+            } catch (Exception | OutOfMemoryError e) {
+                AppLog.w("screensaver: background photo: " + e.getClass().getSimpleName());
+            }
+            final Backdrop ready = b;
+            final String by = author;
+            handler.post(() -> {
+                if (gen != generation) {
+                    if (ready != null) {
+                        ready.image.recycle();
+                        if (ready.frostImage != null) ready.frostImage.recycle();
+                    }
+                    return;
+                }
+                photoPending = false;
+                if (ready != null) {
+                    bgPhoto = ready;
+                    photoAuthor = by;
+                    creditGeneration = -1;
+                    if (w > 0) photoBg = GlassMath.grid(ready.frost, Backdrop.FW, Backdrop.FH, w, h);
+                    photoAt = clock();
+                }
+                dirty = true;
+                invalidate();
+            });
+        });
+    }
 
     private void drawFallback(Canvas canvas, long up, float alpha) {
         float t = (up - startedAt) / 1000f;
-        if (up - lastSky >= 100) {
-            lastSky = up;
-            scene.advance(timeOffset + t);
+        if (photoPending) {
+            canvas.drawRect(0, 0, w, h, black);
+            return;
         }
-        scene.drawBackground(canvas);
+        if (bgPhoto != null) {
+            canvas.drawRect(0, 0, w, h, black);
+            alpha *= fadeIn(up - photoAt, FIRST_MS);
+            photoPaint.setAlpha(Math.round(255 * alpha));
+            canvas.drawBitmap(bgPhoto.image, null, screenRect, photoPaint);
+        } else {
+            if (up - lastSky >= 100) {
+                lastSky = up;
+                scene.advance(timeOffset + t);
+            }
+            scene.drawBackground(canvas);
+        }
         if (dirty) {
             Canvas rc = content.beginRecording(w, h);
             try {
@@ -719,7 +806,10 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         // Centred on its ink, as frosted glass once baked (it drifts with `content`).
         clockPaint.getTextBounds(clock, 0, clock.length(), clockInk);
         float left = Math.round(cx - clockInk.width() / 2f);
-        if (running) glassClock.request(clock, clockPaint, left, clockBase, fallbackBg, fallbackLook, onGlassClock);
+        // Over the photo, the glass reads its frosted version at the undrifted position (40 px of drift at most, over
+        // a photo blurred down to 1/10: no visible difference).
+        GlassMath.Sampler bg = bgPhoto != null && photoBg != null ? photoBg : fallbackBg;
+        if (running) glassClock.request(clock, clockPaint, left, clockBase, bg, fallbackLook, onGlassClock);
         Bitmap baked = glassClock.bitmap();
         if (baked != null) c.drawBitmap(baked, glassClock.x(), glassClock.y(), bakedPaint);
         else c.drawText(clock, left - clockInk.left, clockBase, clockFlat);
@@ -747,8 +837,28 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         }
 
         // Today's next football game near the bottom edge (the prices are only on the home screen).
+        // In a glass capsule: flat translucent white, like the shelf's glass on TVs without AGSL, with a thin rim.
         String line = footballLine();
-        if (!line.isEmpty()) c.drawText(line, cx - linePaint.measureText(line) / 2, h - 92 * k, linePaint);
+        if (!line.isEmpty()) {
+            float base = h - 92 * k, lw = linePaint.measureText(line), cap = Ui.cap(linePaint);
+            bubble.set(cx - lw / 2 - 28 * k, base - cap - 14 * k, cx + lw / 2 + 28 * k, base + 14 * k);
+            float r = bubble.height() / 2;
+            bubbleFill.setColor(bgPhoto != null ? 0x29FFFFFF : 0x1AFFFFFF);
+            c.drawRoundRect(bubble, r, r, bubbleFill);
+            float in = bubbleRim.getStrokeWidth() / 2;
+            bubble.inset(in, in);
+            c.drawRoundRect(bubble, r - in, r - in, bubbleRim);
+            c.drawText(line, cx - lw / 2, base, linePaint);
+        }
+
+        // The photographer's credit (Unsplash's rules), small, bottom right.
+        if (bgPhoto != null) {
+            if (creditGeneration != Ui.generation) {
+                creditGeneration = Ui.generation;
+                creditText = photoAuthor.isEmpty() ? "Unsplash" : Ui.trf("Photo: {name}, Unsplash", "name", photoAuthor);
+            }
+            c.drawText(creditText, RIGHT * k, h - 60 * k, creditPaint);
+        }
     }
 
     /** "16:30  Vitória x Athletico-PR · Premiere", or the score while live; empty when no game is left today. */

@@ -123,17 +123,8 @@ final class Backdrop {
      * The glass shelf gives its own contrast: no bottom scrim.
      */
     static Backdrop photo(Bitmap src) {
-        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Bitmap out = fill(src);
         Canvas c = new Canvas(out);
-        Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
-        if (src.getWidth() == W && src.getHeight() == H) {
-            c.drawBitmap(src, 0, 0, null);   // already the screen's size: pixel for pixel
-        } else {
-            float scale = Math.max((float) W / src.getWidth(), (float) H / src.getHeight());
-            float sw = src.getWidth() * scale, sh = src.getHeight() * scale;
-            c.drawBitmap(src, null, new RectF((W - sw) / 2, (H - sh) / 2, (W + sw) / 2, (H + sh) / 2), paint);
-        }
-        src.recycle();
         float boost = Math.max(0, Math.min(0.3f, (luminance(out, 0, 0.22f, 0.5f, 0.62f) - 0.22f) * 1.1f));
         Paint scrim = new Paint(Paint.DITHER_FLAG);
         scrim.setShader(new LinearGradient(0, 0, W * 0.68f, 0,
@@ -145,6 +136,47 @@ final class Backdrop {
         int[] frost = reduce(out, FW, FH, 3, 3);
         int[] glass = reduce(out, GW, GH, 2, 2);
         return new Backdrop(gpu(out), frost, glass, null, null, null, null, null, null);
+    }
+
+    /**
+     * The same Unsplash photo for the screensaver, whose date, clock and weather sit in the middle and the next game at
+     * the bottom: a soft oval scrim behind the middle (stronger on a bright photo) and a light one at the bottom. Only
+     * the sharp image and the frosted version (for the glass clock).
+     */
+    static Backdrop dream(Bitmap src) {
+        Bitmap out = fill(src);
+        Canvas c = new Canvas(out);
+        float boost = Math.max(0, Math.min(0.3f, (luminance(out, 0.25f, 0.25f, 0.75f, 0.72f) - 0.22f) * 1.1f));
+        Paint scrim = new Paint(Paint.DITHER_FLAG);
+        float cx = W * 0.5f, cy = H * 0.48f, r = W * 0.5f;
+        scrim.setShader(new android.graphics.RadialGradient(cx, cy, r,
+                new int[] {black(0.42f + boost), black(0.32f + boost * 0.8f), black(0.12f + boost * 0.3f), 0},
+                new float[] {0, 0.4f, 0.75f, 1}, Shader.TileMode.CLAMP));
+        c.save();
+        c.scale(1, 0.62f, cx, cy);
+        c.drawCircle(cx, cy, r, scrim);
+        c.restore();
+        scrim.setShader(new LinearGradient(0, H, 0, H * 0.7f, new int[] {black(0.4f), black(0.18f), 0},
+                new float[] {0, 0.45f, 1}, Shader.TileMode.CLAMP));
+        c.drawRect(0, H * 0.7f, W, H, scrim);
+        int[] frost = reduce(out, FW, FH, 3, 3);
+        return new Backdrop(gpu(out), frost, null, null, null, null, null, null, null);
+    }
+
+    /** The photo center-cropped to fill W × H, in a new mutable bitmap (src is recycled). */
+    private static Bitmap fill(Bitmap src) {
+        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        if (src.getWidth() == W && src.getHeight() == H) {
+            c.drawBitmap(src, 0, 0, null);   // already the screen's size: pixel for pixel
+        } else {
+            Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
+            float scale = Math.max((float) W / src.getWidth(), (float) H / src.getHeight());
+            float sw = src.getWidth() * scale, sh = src.getHeight() * scale;
+            c.drawBitmap(src, null, new RectF((W - sw) / 2, (H - sh) / 2, (W + sw) / 2, (H + sh) / 2), paint);
+        }
+        src.recycle();
+        return out;
     }
 
     /** How many times smaller the screensaver photo's frosted version is (the glass math uses the same number). */
