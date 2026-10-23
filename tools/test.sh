@@ -3,5 +3,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 rm -rf out/test && mkdir -p out/test
-javac -encoding UTF-8 -source 8 -target 8 -nowarn -d out/test app/src/io/freemytv/FootballRules.java tools/test/FootballRulesTest.java
+javac -encoding UTF-8 -source 8 -target 8 -nowarn -d out/test app/src/io/freemytv/FootballRules.java tools/test/FootballRulesTest.java app/src/io/freemytv/BackgroundRules.java tools/test/BackgroundRulesTest.java
 java -cp out/test io.freemytv.FootballRulesTest
+java -cp out/test io.freemytv.BackgroundRulesTest
