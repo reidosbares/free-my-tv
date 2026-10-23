@@ -115,6 +115,17 @@ public final class FootballRulesTest {
         check(teamPlaysToday(tf, brt(2026, 10, 24, 9, 0)), "team plays today");
         check(!teamPlaysToday(tf, brt(2026, 10, 23, 9, 0)) && !teamPlaysToday(new Feed(), 0), "not today, or no next");
 
+        // The team's crest goes in front: it's the away side at Flamengo, the home side otherwise.
+        Feed cf = new Feed();
+        cf.teamName = "Atlético-MG";
+        cf.next = at(2026, 10, 26, 20, 0, "scheduled");
+        cf.next.home.name = "Flamengo";
+        cf.next.away.name = "Atlético-MG";
+        check(teamIsAway(cf), "away at Flamengo");
+        cf.next.home.name = "Atlético-MG";
+        cf.next.away.name = "Cruzeiro";
+        check(!teamIsAway(cf) && !teamIsAway(new Feed()), "home, or no next match");
+
         if (failures > 0) {
             System.out.println(failures + " check(s) failed");
             System.exit(1);

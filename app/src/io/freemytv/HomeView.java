@@ -1940,9 +1940,73 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return TextUtils.ellipsize(text, fitPaint, Math.max(0, room), TextUtils.TruncateAt.END).toString();
     }
 
-    /** Where the team card's stripes start (its text stops before them). */
-    private float footballStripes() {
-        return footballRows[0].right - 18 * k - 6 * 9 * k;
+    /** The team's crest size on the card, in whole pixels (drawn pixel for pixel); the opponent's is a bit smaller. */
+    private int crestSize(boolean ours) {
+        int s = Math.round(footballRows[0].height() * 0.74f);
+        return ours ? s : Math.round(s * 0.8f);
+    }
+
+    /** Where the team's crest (in front) starts: the opponent's tucks a third of itself behind it. */
+    private float crestLeft() {
+        return Math.round(footballRows[0].right - 22 * k - crestSize(true));
+    }
+
+    /** Where the team card's crests start (its text stops before them). */
+    private float footballCrests() {
+        if (football.crests == null) return footballRows[0].right - 8 * k;
+        return crestLeft() - (football.crests[1] == null ? 0 : crestSize(false) * 0.66f);
+    }
+
+    /** A crest filtered down to fit size × size, kept for the next frames. */
+    private Bitmap crispCrest(Bitmap src, int size) {
+        String key = "crest@" + System.identityHashCode(src) + "@" + size;
+        Bitmap out = crispLogos.get(key);
+        if (out != null) return out;
+        float scale = Math.min((float) size / src.getWidth(), (float) size / src.getHeight());
+        out = downscale(src, Math.round(src.getWidth() * scale), Math.round(src.getHeight() * scale));
+        crispLogos.put(key, out);
+        return out;
+    }
+
+    /** The crest's outline grown by `gap` px (an alpha mask): painted in the card's color, it cuts the crest behind. */
+    private Bitmap crestGap(Bitmap crest, int gap) {
+        String key = "gap@" + System.identityHashCode(crest) + "@" + gap;
+        Bitmap out = crispLogos.get(key);
+        if (out != null) return out;
+        Bitmap alpha = crest.extractAlpha();
+        out = Bitmap.createBitmap(crest.getWidth() + 2 * gap, crest.getHeight() + 2 * gap, Bitmap.Config.ALPHA_8);
+        Canvas cc = new Canvas(out);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        for (int i = 0; i < 16; i++) {
+            double a = i * Math.PI / 8;
+            cc.drawBitmap(alpha, gap + (float) (gap * Math.cos(a)), gap + (float) (gap * Math.sin(a)), p);
+        }
+        alpha.recycle();
+        crispLogos.put(key, out);
+        return out;
+    }
+
+    /** The two crests at the card's right: the opponent's behind, the team's in front with a gap around it. */
+    private void drawCrests(Canvas c, RectF t, int cardColor) {
+        Bitmap[] crests = football.crests;
+        if (crests == null) return;
+        float cy = t.centerY(), front = crestLeft();
+        int s = crestSize(true);
+        if (crests[1] != null) {
+            int sb = crestSize(false);
+            Bitmap theirs = crispCrest(crests[1], sb);
+            float bx = Math.round(front + sb * 0.34f - sb + (sb - theirs.getWidth()) / 2f);
+            c.drawBitmap(theirs, bx, Math.round(cy - theirs.getHeight() / 2f), bitmapPaint);
+        }
+        Bitmap ours = crispCrest(crests[0], s);
+        float x = Math.round(front + (s - ours.getWidth()) / 2f), y = Math.round(cy - ours.getHeight() / 2f);
+        if (crests[1] != null) {
+            int gap = Math.max(2, Math.round(4 * k));
+            fill.setShader(null);
+            fill.setColor(cardColor);
+            c.drawBitmap(crestGap(ours, gap), x - gap, y - gap, fill);
+        }
+        c.drawBitmap(ours, x, y, bitmapPaint);
     }
 
     private static String fixture(FootballRules.Game g) {
@@ -1978,7 +2042,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             String chs = channelList(f.next);
             if (f.next.liveAt(System.currentTimeMillis()) && f.next.hasScore()) when = f.next.homeScore + " x " + f.next.awayScore;
             fbWhen = chs.isEmpty() ? when + " · " + Ui.tr("Broadcast to be confirmed") : footballWide ? when + " · " + chs : when;
-            float room = footballStripes() - 16 * k - (footballRows[0].left + 24 * k);
+            float room = footballCrests() - 16 * k - (footballRows[0].left + 24 * k);
             fbFixture = fit(fbFixture, fbTeamTitle, room);
             fbWhen = fit(fbWhen, fbTeamSub, room);
         }
@@ -2000,7 +2064,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private String footballKey() {
         return football.fetchedAt + "|" + Prefs.version + "|" + Ui.language + "|" + Float.floatToIntBits(dark()) + "|"
-                + Float.floatToIntBits(clearLook()) + "|" + System.currentTimeMillis() / 60_000 + "|" + footballRowCount + "|" + footballWide;
+                + Float.floatToIntBits(clearLook()) + "|" + System.currentTimeMillis() / 60_000 + "|" + footballRowCount + "|" + footballWide
+                + "|" + System.identityHashCode(football.crests);
     }
 
     private void drawFootballCard(Canvas c, RectF r, boolean wide) {
@@ -2036,10 +2101,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             fill.setShader(null);
             fill.setColor(f.teamColor);
             c.drawRoundRect(t, radius, radius, fill);
-            // The team's colors as a striped edge, inside the straight part of the card.
-            fill.setColor(Ui.alpha(f.teamTextColor, 0.9f));
-            float sw = 9 * k, sx = footballStripes();
-            for (int i = 0; i < 3; i++) c.drawRect(sx + i * 2 * sw, t.top, sx + i * 2 * sw + sw, t.bottom, fill);
+            drawCrests(c, t, f.teamColor);
             fbTeamTitle.setColor(f.teamTextColor);
             fbTeamSub.setColor(Ui.alpha(f.teamTextColor, 0.8f));
             c.drawText(fbFixture, t.left + 24 * k, t.top + (footballWide ? 50 : 46) * k, fbTeamTitle);

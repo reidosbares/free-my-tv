@@ -2,6 +2,8 @@ package io.freemytv;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
@@ -10,6 +12,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -45,6 +49,11 @@ final class FootballData {
     /** The last good feed (null until there is one), with "today" trimmed to the current day. */
     volatile FootballRules.Feed feed;
     volatile long fetchedAt;
+    /** The next match's crests: [0] the team's, [1] the opponent's (null when it didn't load). Null until the team's loads. */
+    volatile Bitmap[] crests;
+
+    private final File crestDir;
+    private String crestsKey = "";
 
     private final SharedPreferences cache;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -55,6 +64,7 @@ final class FootballData {
 
     private FootballData(Context c) {
         cache = c.getSharedPreferences("football", Context.MODE_PRIVATE);
+        crestDir = new File(c.getCacheDir(), "crests");
         if (!enabled()) return;
         String body = cache.getString("body", null);
         if (body != null) {
@@ -64,6 +74,12 @@ final class FootballData {
             } catch (Exception e) {
                 AppLog.w("football: cached feed unreadable: " + e.getMessage());
             }
+        }
+        if (feed != null) {
+            FootballRules.Feed f = feed;
+            io.execute(() -> {
+                if (loadCrests(f)) notifyListeners();
+            });
         }
     }
 
@@ -99,6 +115,7 @@ final class FootballData {
                 fetchedAt = at;
                 failedAt = 0;
                 cache.edit().putString("body", body).putLong("at", at).apply();
+                loadCrests(f);
                 notifyListeners();
                 AppLog.w("football: " + f.today.length + " today, next " + (f.next == null ? "none" : f.next.home.name + " x " + f.next.away.name));
             } catch (Exception e) {
@@ -118,6 +135,49 @@ final class FootballData {
         if (t.length != f.today.length) {
             f.today = t;
             notifyListeners();
+        }
+    }
+
+    /** The next match's crests, from the disk cache or the web (io thread). True when they changed. */
+    private boolean loadCrests(FootballRules.Feed f) {
+        FootballRules.Game g = f.next;
+        if (g == null) {
+            boolean had = crests != null;
+            crests = null;
+            crestsKey = "";
+            return had;
+        }
+        boolean away = FootballRules.teamIsAway(f);
+        String ours = away ? g.away.crest : g.home.crest, theirs = away ? g.home.crest : g.away.crest;
+        String key = ours + " " + theirs;
+        if (key.equals(crestsKey)) return false;
+        Bitmap a = crest(ours), b = crest(theirs);
+        // Without the team's own crest the card keeps its plain look; the next fetch tries again.
+        crestsKey = a == null ? "" : key;
+        crests = a == null ? null : new Bitmap[] {a, b};
+        return true;
+    }
+
+    private Bitmap crest(String url) {
+        if (url == null || url.isEmpty()) return null;
+        File file = new File(crestDir, Integer.toHexString(url.hashCode()) + ".png");
+        try {
+            if (file.isFile()) {
+                Bitmap b = BitmapFactory.decodeFile(file.getPath());
+                if (b != null) return b;
+            }
+            byte[] bytes = get(url);
+            Bitmap b = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            if (b == null) return null;
+            if (crestDir.isDirectory() || crestDir.mkdirs()) {
+                try (FileOutputStream out = new FileOutputStream(file)) {
+                    out.write(bytes);
+                }
+            }
+            return b;
+        } catch (Exception e) {
+            AppLog.w("football: crest " + url + ": " + e.getMessage());
+            return null;
         }
     }
 

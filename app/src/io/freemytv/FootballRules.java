@@ -45,6 +45,12 @@ final class FootballRules {
         Game[] today = new Game[0];
     }
 
+    /** True when the team plays away in its next match (its crest goes in front, whichever side it is on). */
+    static boolean teamIsAway(Feed f) {
+        return f.next != null && !f.teamName.isEmpty() && f.teamName.equals(f.next.away.name)
+                && !f.teamName.equals(f.next.home.name);
+    }
+
     /** ge's channel names and the TV app that shows each (in order of preference when a game has several). */
     static final String[][] CHANNEL_APPS = {
             {"sportv", "com.globo.globotv"},
