@@ -120,6 +120,13 @@ final class Prefs {
     static void setQuotes(boolean on) { put("quotes", on); }
 
     static boolean coin(int i) { return sp().getBoolean("coin" + i, true); }
+
+    /** Where the football card goes: "home" (beside the clock), "drawer" or "off". */
+    static String football() {
+        String v = sp().getString("football", "home");
+        return v.equals("drawer") || v.equals("off") ? v : "home";
+    }
+    static void setFootball(String v) { put("football", v); }
     static void setCoin(int i, boolean on) { put("coin" + i, on); }
 
     // MARK: - Shelf

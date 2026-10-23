@@ -87,6 +87,15 @@ final class FootballRules {
         return picksOn ? "drawer" : "home";
     }
 
+    /** Home Settings' ← →: the next placement, among those that can be shown (no "home" while the picks need it). */
+    static String nextPlacement(String stored, int dir, boolean picksOn) {
+        String[] options = picksOn ? new String[] {"drawer", "off"} : new String[] {"home", "drawer", "off"};
+        String now = effectivePlacement(stored, picksOn);
+        int at = 0;
+        for (int i = 0; i < options.length; i++) if (options[i].equals(now)) at = i;
+        return options[((at + (dir < 0 ? -1 : 1)) % options.length + options.length) % options.length];
+    }
+
     private static final TimeZone BRT = TimeZone.getTimeZone("GMT-03:00");
 
     private static int dayOf(long ms) {

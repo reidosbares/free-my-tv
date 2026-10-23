@@ -64,6 +64,12 @@ public final class FootballRulesTest {
         check("off".equals(effectivePlacement("off", true)), "off stays off");
         check("home".equals(effectivePlacement("bogus", false)), "unknown value falls back to home");
 
+        check("drawer".equals(nextPlacement("home", 1, false)) && "off".equals(nextPlacement("drawer", 1, false))
+                && "home".equals(nextPlacement("off", 1, false)), "right cycles home → drawer → off → home");
+        check("off".equals(nextPlacement("home", -1, false)), "left goes back");
+        check("off".equals(nextPlacement("home", 1, true)) && "drawer".equals(nextPlacement("off", 1, true))
+                && "off".equals(nextPlacement("drawer", -1, true)), "with picks: only drawer and off");
+
         long sat1700 = brt(2026, 10, 24, 17, 0);
         Game[] t = todayOnly(games(at(2026, 10, 23, 20, 0, "finished"), at(2026, 10, 24, 16, 30, "live"),
                 at(2026, 10, 24, 21, 0, "scheduled"), at(2026, 10, 25, 11, 0, "scheduled")), sat1700);

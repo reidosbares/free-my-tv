@@ -637,11 +637,20 @@ public class SettingsActivity extends Activity {
         // MARK: - Home Settings and Remote Buttons
 
         private static final String[] UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"};
-        /** Home Settings: language, temperature, theme, sounds, weather, city, quotes, then one row per coin. */
+        /** Home Settings: language, temperature, theme, sounds, weather, city, quotes, one row per coin, then football. */
         private static final int CITY_ROW = 5, COIN_ROWS = 7;
 
         private boolean dollar() {
             return "BRL".equalsIgnoreCase(Config.CURRENCY.trim());
+        }
+
+        private int coinRows() {
+            return dollar() ? 4 : 3;
+        }
+
+        /** The football card's row, last, only with a futebol service set; -1 without. */
+        private int footballRow() {
+            return FootballData.enabled() ? COIN_ROWS + coinRows() : -1;
         }
 
         private String[] settingLabels() {
@@ -657,6 +666,7 @@ public class SettingsActivity extends Activity {
             l.add("Ethereum");
             l.add("Solana");
             if (dollar()) l.add(Ui.tr("Dollar"));
+            if (FootballData.enabled()) l.add(Ui.tr("Football"));
             return l.toArray(new String[0]);
         }
 
@@ -674,7 +684,11 @@ public class SettingsActivity extends Activity {
             v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
             v[6] = onOff(Prefs.quotes());
             // No quotes widget, nowhere to show prices: the coins read as off (and stay locked) until it is back on.
-            for (int i = COIN_ROWS; i < v.length; i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
+            for (int i = COIN_ROWS; i < COIN_ROWS + coinRows(); i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
+            if (footballRow() >= 0) {
+                String at = FootballRules.effectivePlacement(Prefs.football(), Recs.hasKey(getContext()));
+                v[footballRow()] = at.equals("home") ? Ui.tr("On the home screen") : at.equals("drawer") ? Ui.tr("In the drawer") : onOff(false);
+            }
             return v;
         }
 
@@ -736,6 +750,10 @@ public class SettingsActivity extends Activity {
                 int at = appPkgs.indexOf(Prefs.keyApp(Prefs.KEYS[focus]));
                 int next = at < 0 ? (dir > 0 ? 0 : n - 1) : (at + dir + n) % n;
                 Prefs.setKeyApp(Prefs.KEYS[focus], appPkgs.get(next));
+                return;
+            }
+            if (focus == footballRow()) {
+                Prefs.setFootball(FootballRules.nextPlacement(Prefs.football(), dir, Recs.hasKey(getContext())));
                 return;
             }
             switch (focus) {
@@ -967,7 +985,7 @@ public class SettingsActivity extends Activity {
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
-                boolean locked = !keys && i >= COIN_ROWS && !Prefs.quotes();
+                boolean locked = !keys && i >= COIN_ROWS && i < COIN_ROWS + coinRows() && !Prefs.quotes();
                 rowValue.setColor(blend(locked ? 0x59FFFFFF : 0xB3FFFFFF, locked ? 0x591C1C1E : 0xB31C1C1E, f));
                 if (locked) rowLabel.setColor(blend(0x73FFFFFF, 0x731C1C1E, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
