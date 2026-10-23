@@ -99,7 +99,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // The big clock as frosted glass over a photo, baked on LOADER. Static: a recreated home screen (back from Home
     // Settings) finds the same bake and shows the glass at once.
     private static final GlassClock GLASS = new GlassClock(LOADER, new Handler(Looper.getMainLooper()));
-    private static Backdrop glassFor;
+    // The sampler over the photo's frost, made again for another photo or another size.
+    private static int[] glassFrost;
+    private static int glassW, glassH;
     private static GlassMath.Sampler glassBg;
     // Light design (the L_ constants): title, tab bar, three recommendation cards and the shelf.
     // The tab bar is a 68 px capsule; the cards sit on the 5-column grid (the wide one spans 3).
@@ -840,11 +842,19 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Bakes the big clock as glass over the photo (on LOADER), once the photo and the day or night look have settled. */
     private void requestClockGlass() {
-        if (!running || lClock == null || clockText.isEmpty() || !isPhoto(bgTo) || bgTo.frost == null || bgFadeAt != 0
-                || nightAt != 0 || picksOn()) return;
-        if (bgTo != glassFor) {
-            glassFor = bgTo;
-            glassBg = GlassMath.grid(bgTo.frost, Backdrop.FW, Backdrop.FH, w, h);
+        if (!running || lClock == null || clockText.isEmpty()) return;
+        if (picksOn() || (bgFadeAt == 0 && !isPhoto(bgTo))) {
+            // No photo left to bake over (Plain, the gradient, the picks): free the bakes.
+            if (GLASS.bitmap() != null || GLASS.pending() || glassFrost != null) releaseGlass();
+            return;
+        }
+        // Deferred: the fade's end and the night's settling ask again.
+        if (bgFadeAt != 0 || nightAt != 0 || bgTo.frost == null) return;
+        if (bgTo.frost != glassFrost || w != glassW || h != glassH) {
+            glassFrost = bgTo.frost;
+            glassW = w;
+            glassH = h;
+            glassBg = GlassMath.grid(glassFrost, Backdrop.FW, Backdrop.FH, w, h);
         }
         clockLook.refraction = 7 * k;
         clockLook.darken = 0.45f * night;     // as the photo is darkened at night
@@ -868,7 +878,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** Frees the glass clock's bitmaps (the home screen is gone, or memory is short); the next resume bakes again. */
     static void releaseGlass() {
         GLASS.release();
-        glassFor = null;
+        glassFrost = null;
         glassBg = null;
     }
 
@@ -3290,8 +3300,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      */
     private void drawBigClock(Canvas c, float x) {
         Bitmap now = GLASS.bitmap(), old = GLASS.previous();
-        // A bake of another minute only while the new one is on its way (a failed bake falls back to the text).
-        boolean fresh = now != null && !now.isRecycled() && (clockText.equals(GLASS.bakedText()) || GLASS.pending());
+        // A bake of another minute only while the new one is on its way or deferred (background fade, night
+        // transition); a failed bake falls back to the text.
+        boolean fresh = now != null && !now.isRecycled() && (clockText.equals(GLASS.bakedText()) || GLASS.pending()
+                || bgFadeAt != 0 || nightAt != 0);
         float g = fresh ? photo : 0;
         float e = fresh ? fadeEase(GLASS.readyAt(), SystemClock.uptimeMillis()) : 1;
         boolean crossfade = e < 1 && old != null && !old.isRecycled();
