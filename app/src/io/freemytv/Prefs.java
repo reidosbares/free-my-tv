@@ -111,15 +111,12 @@ final class Prefs {
     static boolean sounds() { return sp().getBoolean("sounds", true); }
     static void setSounds(boolean on) { put("sounds", on); }
 
-    // MARK: - Widgets and coins
+    // MARK: - Widgets
 
     static boolean weather() { return sp().getBoolean("weather", true); }
     static void setWeather(boolean on) { put("weather", on); }
 
-    static boolean quotes() { return sp().getBoolean("quotes", Config.SHOW_CRYPTO); }
-    static void setQuotes(boolean on) { put("quotes", on); }
 
-    static boolean coin(int i) { return sp().getBoolean("coin" + i, true); }
 
     /** Where the football card goes: "home" (beside the clock), "drawer" or "off". */
     static String football() {
@@ -127,7 +124,6 @@ final class Prefs {
         return v.equals("drawer") || v.equals("off") ? v : "home";
     }
     static void setFootball(String v) { put("football", v); }
-    static void setCoin(int i, boolean on) { put("coin" + i, on); }
 
     // MARK: - Shelf
 

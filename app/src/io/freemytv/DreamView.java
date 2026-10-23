@@ -45,7 +45,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     /** Photos 10% larger than the screen (the zoom goes up to 1.1 without upscaling). */
     private static final int PW = 2112, PH = 1188;
     private static final float MARGIN = 80, RIGHT = 1840, TITLE_W = 900, META_BASE = 1008;
-    private static final float DATE_BASE = 92, CLOCK_TOP = 120, CLOCK_SIZE = 200, QUOTES_GAP = 52;
+    private static final float DATE_BASE = 92, CLOCK_TOP = 120, CLOCK_SIZE = 200, LINE_GAP = 52;
     private static final double DRIFT_PERIOD_S = 600;
     // The high and low and the football line, made again only when they change (drawn on every frame).
     private String range = "", footballLine = "";
@@ -105,7 +105,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private final Handler handler = new Handler(Looper.getMainLooper());
     private ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Recording content = Recording.create("clock");     // without photos: the clock over the aurora
-    private final Recording chrome = Recording.create("corner");     // date, weather, prices and the clock's shadow
+    private final Recording chrome = Recording.create("corner");     // date, weather, football line and the clock's shadow
     private final float timeOffset = (float) (Math.random() * 300);
     private final Matrix matrix = new Matrix();
     private final float[] placeA = new float[3], placeB = new float[3];
@@ -127,8 +127,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private float k = 1;
     private long minute = -1;
     private String clock = "", date = "";
-    private Paint datePaint, clockPaint, weatherPaint, weatherDim, quotePaint;
-    private Paint cornerDate, cornerQuote, cornerClock, labelPaint, metaPaint;
+    private Paint datePaint, clockPaint, weatherPaint, weatherDim, linePaint;
+    private Paint cornerDate, cornerLine, cornerClock, labelPaint, metaPaint;
     private TextPaint titlePaint;
 
     private final Runnable tick = new Runnable() {
@@ -240,10 +240,10 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         clockPaint.setLetterSpacing(-0.01f);
         weatherPaint = Ui.numbers(Ui.medium, 30 * k, 0xC7FFFFFF);
         weatherDim = Ui.numbers(Ui.regular, 28 * k, 0x80FFFFFF);
-        quotePaint = Ui.numbers(Ui.medium, 24 * k, 0x99FFFFFF);
-        // With photos: the corner (date, clock, prices) and the caption.
+        linePaint = Ui.numbers(Ui.medium, 24 * k, 0x99FFFFFF);
+        // With photos: the corner (date, clock, football line) and the caption.
         cornerDate = Ui.numbers(Ui.semibold, 30 * k, 0xEBFFFFFF);
-        cornerQuote = Ui.numbers(Ui.regular, 23 * k, 0xC7FFFFFF);
+        cornerLine = Ui.numbers(Ui.regular, 23 * k, 0xC7FFFFFF);
         cornerClock = Ui.numbers(Ui.displaySemibold, CLOCK_SIZE * k, 0xF2FFFFFF);
         labelPaint = Ui.text(Ui.medium, 25 * k, 0xB8FFFFFF);
         labelPaint.setLetterSpacing(0.1f);
@@ -251,7 +251,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         titlePaint.setLetterSpacing(0.005f);
         metaPaint = Ui.text(Ui.medium, 29 * k, 0xC7FFFFFF);
         metaPaint.setLetterSpacing(0.014f);
-        for (Paint p : new Paint[] {cornerDate, cornerQuote, cornerClock, labelPaint, titlePaint, metaPaint}) {
+        for (Paint p : new Paint[] {cornerDate, cornerLine, cornerClock, labelPaint, titlePaint, metaPaint}) {
             p.setShadowLayer(18 * k, 0, 2 * k, 0x66000000);
         }
         glassFor = "";
@@ -502,7 +502,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         return Math.max(base - 0.1f, Math.min(0.78f, base + (light - 0.3f) * 0.9f));
     }
 
-    // MARK: - Corner: date and weather, glass clock, prices
+    // MARK: - Corner: date and weather, glass clock, football line
 
     private void recordChrome() {
         Canvas c = chrome.beginRecording(w, h);
@@ -534,9 +534,9 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             }
 
             // Today's next football game under the clock, right-aligned (the prices are only on the home screen).
-            float base = (CLOCK_TOP + Ui.cap(cornerClock) / k + QUOTES_GAP) * k;
+            float base = (CLOCK_TOP + Ui.cap(cornerClock) / k + LINE_GAP) * k;
             String line = footballLine();
-            if (!line.isEmpty()) c.drawText(line, right - cornerQuote.measureText(line), base, cornerQuote);
+            if (!line.isEmpty()) c.drawText(line, right - cornerLine.measureText(line), base, cornerLine);
         } finally {
             chrome.endRecording();
         }
@@ -762,7 +762,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
 
         // Today's next football game near the bottom edge (the prices are only on the home screen).
         String line = footballLine();
-        if (!line.isEmpty()) c.drawText(line, cx - quotePaint.measureText(line) / 2, h - 92 * k, quotePaint);
+        if (!line.isEmpty()) c.drawText(line, cx - linePaint.measureText(line) / 2, h - 92 * k, linePaint);
     }
 
     /** "16:30  Vitória x Athletico-PR · Premiere", or the score while live; empty when no game is left today. */
