@@ -109,6 +109,7 @@ The first values come from `config.properties`, created by the first build (Goog
 | `tmdb_key` | Your free TMDB key, for the picks | empty |
 | `tmdb_region` | Your country (two letters): which titles are on which app | `US` |
 | `watchmode_key` | Optional, free [Watchmode](https://api.watchmode.com/) key: a pick opens the title's page in its app | empty |
+| `unsplash_key` | Optional, free [Unsplash](https://unsplash.com/developers) key: photos behind the home screen when there are no picks (theme and rotation in *Home Settings*). Google TV only | empty |
 | `latitude`, `longitude` | Your city, for the weather and the sunset | New York |
 | `city` | The name on the weather card | `Weather` |
 | `hide_animation` | Leave cartoons and anime out of the picks | `false` |
@@ -125,6 +126,10 @@ Changed something? Run `./build.sh` and install again. Keep `freemytv.keystore`:
 ### The TMDB key
 
 Free, and it takes two minutes: create an account at [themoviedb.org](https://www.themoviedb.org/signup), then open [Settings → API](https://www.themoviedb.org/settings/api) and request a developer key. Paste the *API Read Access Token* (or the *API Key*) after `tmdb_key=`. It's your key: `config.properties` stays out of git.
+
+### The Unsplash key (optional)
+
+Free too: at [unsplash.com/developers](https://unsplash.com/developers), sign in, choose *New Application*, and copy its *Access Key*. Paste it after `unsplash_key=`. The home screen then shows a photo of the theme you pick in *Home Settings* (Nature, Aerials, Abstract, Architecture or Travel), a new one every hour or every day, or the one you keep. It's your key: don't share it.
 
 ### Opening a title, not just its app (optional)
 
@@ -229,7 +234,7 @@ reference (fix them by hand); the others were machine-made, and corrections from
 
 ## Privacy
 
-No accounts, no analytics, no tracking. The app talks to TMDB, Open-Meteo (with the coordinates you set, or your time zone's main city), and Binance only when `show_crypto=true`, and Watchmode only when you set a `watchmode_key`. Your settings stay on your computer and your TV.
+No accounts, no analytics, no tracking. The app talks to TMDB, Open-Meteo (with the coordinates you set, or your time zone's main city), and Binance only when `show_crypto=true`, Watchmode only when you set a `watchmode_key`, and Unsplash, for the photos, only when you set an `unsplash_key`. Your settings stay on your computer and your TV.
 
 ## Credits
 

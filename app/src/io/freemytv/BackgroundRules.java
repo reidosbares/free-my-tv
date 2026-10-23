@@ -8,6 +8,7 @@ public final class BackgroundRules {
 
     private static final long HOUR = 3_600_000L;
     private static final long RETRY = 10 * 60_000L;
+    private static final int COUNT = 10;
 
     public static String theme(String stored) {
         for (String t : THEMES) if (t.equals(stored)) return t;
@@ -26,13 +27,22 @@ public final class BackgroundRules {
         }
     }
 
-    /** The random-photo request; the key goes in a header, never here. */
+    /** The theme's Unsplash topic slug, or null for a search (or plain). */
+    public static String topic(String theme) {
+        String src = source(theme);
+        return src != null && src.startsWith("topics=") ? src.substring("topics=".length()) : null;
+    }
+
+    /**
+     * The random-photo request, for several photos in one go (one is picked: see Backgrounds.pick); the key goes in a
+     * header, never here.
+     */
     public static String randomUrl(String theme) {
         String src = source(theme);
         String url = "https://api.unsplash.com/photos/random?orientation=landscape&content_filter=high&";
         if (src == null) return url;
         int eq = src.indexOf('=');
-        return url + src.substring(0, eq + 1) + src.substring(eq + 1).replace(" ", "%20");
+        return url + src.substring(0, eq + 1) + src.substring(eq + 1).replace(" ", "%20") + "&count=" + COUNT;
     }
 
     public static String sized(String raw, int w, int h) {

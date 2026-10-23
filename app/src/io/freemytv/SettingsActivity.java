@@ -7,11 +7,15 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.BitmapShader;
 import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -30,6 +34,7 @@ import android.widget.EditText;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -112,7 +117,7 @@ public class SettingsActivity extends Activity {
         view.resume();
     }
 
-    static final class SettingsView extends View implements Choreographer.FrameCallback {
+    static final class SettingsView extends View implements Choreographer.FrameCallback, Backgrounds.Listener {
         private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5;
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
@@ -125,7 +130,7 @@ public class SettingsActivity extends Activity {
         private final SettingsActivity activity;
         private final Scene scene = new Scene();
         private final Handler handler = new Handler(Looper.getMainLooper());
-        private final Spring[] pop = new Spring[12];
+        private final Spring[] pop = new Spring[14];
         private final List<String> appPkgs = new ArrayList<>(), appLabels = new ArrayList<>();
         // The list picker (the app of a remote button): what it shows, which one is in use, where we are.
         private final List<String> pickLabels = new ArrayList<>();
@@ -151,6 +156,15 @@ public class SettingsActivity extends Activity {
         private float k = 1;
         private Paint title, subtitle, version, rowLabel, rowValue, rowSub, header, cellLabel, cellValue, warn, spinner, white, shadow;
         private TextPaint notice;
+        // Home Settings' preview of the photo on the home screen, decoded small off the UI thread.
+        private static final float PREVIEW_W = 480, PREVIEW_H = 270, PREVIEW_TOP = 160;
+        private Bitmap previewBitmap;
+        private Backgrounds.Photo previewPhoto;
+        private String previewId, previewCredit;
+        private int previewGen, previewCreditGen = -1;
+        private final Paint previewPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private final android.graphics.Matrix previewMatrix = new android.graphics.Matrix();
+        private Paint previewCaption;
 
         private final Runnable poll = new Runnable() {
             @Override public void run() {
@@ -196,7 +210,10 @@ public class SettingsActivity extends Activity {
                     focus = id - 1;
                     invalidate();
                 }
-                @Override public void click(int id) { activate(); }
+                @Override public void click(int id) {
+                    activate();
+                    syncPreview();
+                }
             });
         }
 
@@ -262,8 +279,8 @@ public class SettingsActivity extends Activity {
                 top = LIST_TOP + 20 + row * (CHOICE_H + ROW_GAP);
                 height = CHOICE_H;
             } else {
-                top = LIST_TOP + 20 + row * (LIST_ROW_H + LIST_ROW_GAP);
-                height = LIST_ROW_H;
+                top = LIST_TOP + 20 + row * listStep();
+                height = listRowH();
             }
             focusBox.set(LIST_X * k, top * k, LIST_R * k, (top + height) * k);
             return focusBox;
@@ -277,10 +294,14 @@ public class SettingsActivity extends Activity {
             handler.post(poll);
             Choreographer.getInstance().postFrameCallback(this);
             spoken.readAgain();
+            if (Backgrounds.hasKey()) Backgrounds.get(getContext()).addListener(this);
+            syncPreview();
         }
 
         void pause() {
             running = false;
+            if (Backgrounds.hasKey()) Backgrounds.get(getContext()).removeListener(this);
+            releasePreview();
             handler.removeCallbacks(poll);
             Choreographer.getInstance().removeFrameCallback(this);
         }
@@ -323,6 +344,112 @@ public class SettingsActivity extends Activity {
             white.setColor(0xFFF5F5F7);
             shadow = new Paint(Paint.ANTI_ALIAS_FLAG);
             shadow.setMaskFilter(new BlurMaskFilter(22 * k, BlurMaskFilter.Blur.NORMAL));
+            previewCaption = Ui.text(Ui.medium, 26 * k, 0xE6FFFFFF);
+            previewCaption.setTextAlign(Paint.Align.CENTER);
+            releasePreview();   // made again at the new size
+            syncPreview();
+        }
+
+        // MARK: - Home Settings' photo preview
+
+        /** The photo changed (or the next one arrived): the preview and "New background now" follow. */
+        @Override public void onBackground() {
+            syncPreview();
+            invalidate();
+        }
+
+        /** Keeps the preview in step: the current photo while Home Settings is shown, nothing otherwise. */
+        private void syncPreview() {
+            Backgrounds b = Backgrounds.hasKey() ? Backgrounds.get(getContext()) : null;
+            Backgrounds.Photo p = running && w > 0 && screen == HOME_SETTINGS && b != null && b.active(getContext())
+                    ? b.currentPhoto() : null;
+            if (p == null || p.id == null) {
+                releasePreview();
+                return;
+            }
+            if (p.id.equals(previewId)) return;
+            releasePreview();
+            previewId = p.id;
+            int gen = previewGen;
+            File file = b.currentFile();
+            int pw = Math.round(PREVIEW_W * k), ph = Math.round(PREVIEW_H * k);
+            new Thread(() -> {
+                Bitmap bm = decodePreview(file, pw, ph);
+                handler.post(() -> {
+                    if (gen != previewGen) {
+                        if (bm != null) bm.recycle();
+                        return;
+                    }
+                    if (bm == null) {   // no file (being swapped): the next key or change tries again
+                        previewId = null;
+                        return;
+                    }
+                    previewBitmap = bm;
+                    previewPhoto = p;
+                    previewCreditGen = -1;
+                    BitmapShader shader = new BitmapShader(bm, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+                    previewMatrix.setTranslate(Math.round(500 * k - pw / 2f), Math.round(PREVIEW_TOP * k));
+                    shader.setLocalMatrix(previewMatrix);
+                    previewPaint.setShader(shader);
+                    invalidate();
+                });
+            }, "settings-preview").start();
+        }
+
+        private void releasePreview() {
+            previewGen++;
+            previewId = null;
+            previewPhoto = null;
+            previewPaint.setShader(null);
+            if (previewBitmap != null) {
+                previewBitmap.recycle();
+                previewBitmap = null;
+                invalidate();
+            }
+        }
+
+        /** current.jpg, cropped to fill pw × ph; null when it can't be read. Off the UI thread. */
+        private static Bitmap decodePreview(File f, int pw, int ph) {
+            try {
+                BitmapFactory.Options bounds = new BitmapFactory.Options();
+                bounds.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(f.getPath(), bounds);
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+                BitmapFactory.Options opts = new BitmapFactory.Options();
+                opts.inSampleSize = 1;
+                while (bounds.outWidth / (opts.inSampleSize * 2) >= pw && bounds.outHeight / (opts.inSampleSize * 2) >= ph) opts.inSampleSize *= 2;
+                Bitmap src = BitmapFactory.decodeFile(f.getPath(), opts);
+                if (src == null) return null;
+                float scale = Math.max(pw / (float) src.getWidth(), ph / (float) src.getHeight());
+                float sw = pw / scale, sh = ph / scale;
+                Rect from = new Rect(Math.round((src.getWidth() - sw) / 2), Math.round((src.getHeight() - sh) / 2),
+                        Math.round((src.getWidth() + sw) / 2), Math.round((src.getHeight() + sh) / 2));
+                Bitmap out = Bitmap.createBitmap(pw, ph, Bitmap.Config.ARGB_8888);
+                new Canvas(out).drawBitmap(src, from, new Rect(0, 0, pw, ph), new Paint(Paint.FILTER_BITMAP_FLAG));
+                src.recycle();
+                return out;
+            } catch (RuntimeException | OutOfMemoryError e) {
+                AppLog.w("settings preview: " + e.getClass().getSimpleName());
+                return null;
+            }
+        }
+
+        /** The preview in the left column, rounded like the cards, with what it is and its credit under it. */
+        private void drawPreview(Canvas c, float cx) {
+            float pw = Math.round(PREVIEW_W * k), ph = Math.round(PREVIEW_H * k);
+            float left = Math.round(cx - pw / 2), top = Math.round(PREVIEW_TOP * k), r = 20 * k;
+            tmp.set(left, top + 12 * k, left + pw, top + ph + 12 * k);
+            shadow.setColor(0x66000000);
+            c.drawRoundRect(tmp, r, r, shadow);
+            tmp.set(left, top, left + pw, top + ph);
+            c.drawRoundRect(tmp, r, r, previewPaint);
+            if (previewCreditGen != Ui.generation) {
+                previewCreditGen = Ui.generation;
+                String name = previewPhoto == null || previewPhoto.author == null ? "" : previewPhoto.author;
+                previewCredit = name.isEmpty() ? "Unsplash" : Ui.trf("Photo: {name}, Unsplash", "name", name);
+            }
+            c.drawText(Ui.tr("Now on the home screen"), cx, top + ph + 62 * k, previewCaption);
+            c.drawText(previewCredit, cx, top + ph + 98 * k, version);
         }
 
         private boolean busy() {
@@ -369,7 +496,8 @@ public class SettingsActivity extends Activity {
 
             // On the left: big symbol, title, description.
             float cx = 500 * k;
-            Symbols.draw(getContext(), c, "sparkles", cx, 400 * k, 150 * k, 0xEBFFFFFF);
+            if (screen == HOME_SETTINGS && previewBitmap != null) drawPreview(c, cx);
+            else Symbols.draw(getContext(), c, "sparkles", cx, 400 * k, 150 * k, 0xEBFFFFFF);
             c.drawText("Free My TV", cx, 612 * k, title);
             c.drawText(Ui.tr("Your TV's home screen and screensaver"), cx, 660 * k, subtitle);
             c.drawText(versionName(getContext()), cx, 704 * k, version);
@@ -572,6 +700,12 @@ public class SettingsActivity extends Activity {
         }
 
         boolean onKey(KeyEvent e) {
+            boolean handled = handleKey(e);
+            syncPreview();   // Home Settings opened or left, or its photo changed
+            return handled;
+        }
+
+        private boolean handleKey(KeyEvent e) {
             boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
             switch (e.getKeyCode()) {
                 case KeyEvent.KEYCODE_DPAD_UP:
@@ -613,7 +747,7 @@ public class SettingsActivity extends Activity {
                     } else {
                         if (backDown && !e.isCanceled()) {
                             if (screen == PICKER && (pickFor == PICK_CITY || pickFor == PICK_LANGUAGE)) {
-                                focus = pickFor == PICK_CITY ? CITY_ROW : 0;
+                                focus = pickFor == PICK_CITY ? cityRow() : LANGUAGE_ROW;
                                 screen = HOME_SETTINGS;
                             } else if (screen == PICKER) {
                                 focus = pickFor - 1;
@@ -637,12 +771,29 @@ public class SettingsActivity extends Activity {
         // MARK: - Home Settings and Remote Buttons
 
         private static final String[] UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"};
-        /** Home Settings: language, temperature, theme, sounds, weather, city, then football. */
-        private static final int CITY_ROW = 5;
+        /**
+         * Home Settings: language, temperature, theme, the four background rows (only with an Unsplash key), sounds,
+         * weather, city, then football (only with a futebol service set).
+         */
+        private static final int LANGUAGE_ROW = 0, TEMPERATURE_ROW = 1, THEME_ROW = 2;
+        private static final int BG_THEME = 0, BG_EVERY = 1, BG_KEEP = 2, BG_NOW = 3, BG_ROWS = 4;
+
+        /** The first background row (Background), or -1 without an Unsplash key. */
+        private static int bgRow() {
+            return Backgrounds.hasKey() ? THEME_ROW + 1 : -1;
+        }
+
+        private static int soundsRow() {
+            return THEME_ROW + 1 + (bgRow() >= 0 ? BG_ROWS : 0);
+        }
+
+        private static int weatherRow() { return soundsRow() + 1; }
+
+        private static int cityRow() { return soundsRow() + 2; }
 
         /** The football card's row, last, only with a futebol service set; -1 without. */
-        private int footballRow() {
-            return FootballData.enabled() ? CITY_ROW + 1 : -1;
+        private static int footballRow() {
+            return FootballData.enabled() ? cityRow() + 1 : -1;
         }
 
         private String[] settingLabels() {
@@ -650,6 +801,12 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Language"));
             l.add(Ui.tr("Temperature"));
             l.add(Ui.tr("Theme"));
+            if (bgRow() >= 0) {
+                l.add(Ui.tr("Background"));
+                l.add(Ui.tr("Change background"));
+                l.add(Ui.tr("Keep this background"));
+                l.add(Ui.tr("New background now"));
+            }
             l.add(Ui.tr("Navigation sounds"));
             l.add(Ui.tr("Weather widget"));
             l.add(Ui.tr("City"));
@@ -657,18 +814,37 @@ public class SettingsActivity extends Activity {
             return l.toArray(new String[0]);
         }
 
+        private static String bgThemeName(String theme) {
+            switch (theme) {
+                case "aerials": return Ui.tr("Aerials");
+                case "abstract": return Ui.tr("Abstract");
+                case "architecture": return Ui.tr("Architecture");
+                case "travel": return Ui.tr("Travel");
+                case "plain": return Ui.tr("Plain");
+                default: return Ui.tr("Nature");
+            }
+        }
+
         private String[] settingValues() {
             String[] labels = settingLabels();
             String[] v = new String[labels.length];
             String lang = Prefs.language();
-            v[0] = lang.equals("auto") ? Ui.tr("Automatic") : Ui.languageName(lang);
+            v[LANGUAGE_ROW] = lang.equals("auto") ? Ui.tr("Automatic") : Ui.languageName(lang);
             String unit = Prefs.temperature();
-            v[1] = unit.equals("C") ? "°C" : unit.equals("F") ? "°F" : Ui.tr("unit|Automatic");
+            v[TEMPERATURE_ROW] = unit.equals("C") ? "°C" : unit.equals("F") ? "°F" : Ui.tr("unit|Automatic");
             String theme = Prefs.theme();
-            v[2] = theme.equals("light") ? Ui.tr("Light") : theme.equals("dark") ? Ui.tr("Dark") : Ui.tr("Automatic");
-            v[3] = onOff(Prefs.sounds());
-            v[4] = onOff(Prefs.weather());
-            v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
+            v[THEME_ROW] = theme.equals("light") ? Ui.tr("Light") : theme.equals("dark") ? Ui.tr("Dark") : Ui.tr("Automatic");
+            int bg = bgRow();
+            if (bg >= 0) {
+                Backgrounds b = Backgrounds.get(getContext());
+                v[bg + BG_THEME] = bgThemeName(Prefs.bgTheme());
+                v[bg + BG_EVERY] = "day".equals(Prefs.bgEvery()) ? Ui.tr("Every day") : Ui.tr("Every hour");
+                v[bg + BG_KEEP] = onOff(Prefs.bgKeep());
+                v[bg + BG_NOW] = !b.active(getContext()) ? "—" : b.hasNext() ? "" : Ui.tr("Loading…");
+            }
+            v[soundsRow()] = onOff(Prefs.sounds());
+            v[weatherRow()] = onOff(Prefs.weather());
+            v[cityRow()] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
             if (footballRow() >= 0) {
                 String at = FootballRules.effectivePlacement(Prefs.football(), Recs.hasKey(getContext()));
                 v[footballRow()] = at.equals("home") ? Ui.tr("On the home screen") : at.equals("drawer") ? Ui.tr("In the drawer") : onOff(false);
@@ -740,24 +916,44 @@ public class SettingsActivity extends Activity {
                 Prefs.setFootball(FootballRules.nextPlacement(Prefs.football(), dir, Recs.hasKey(getContext())));
                 return;
             }
-            switch (focus) {
-                case 0: break;   // OK opens the language picker.
-                case 1: {
-                    int at = java.util.Arrays.asList(UNITS).indexOf(Prefs.temperature());
-                    Prefs.setTemperature(UNITS[(at + dir + UNITS.length) % UNITS.length]);
-                    break;
-                }
-                case 2: {
-                    int at = java.util.Arrays.asList(THEMES).indexOf(Prefs.theme());
-                    Prefs.setTheme(THEMES[(at + dir + THEMES.length) % THEMES.length]);
-                    break;
-                }
-                case 3: Prefs.setSounds(!Prefs.sounds()); break;
-                case 4: Prefs.setWeather(!Prefs.weather()); break;
-                case CITY_ROW: return;
-                default: return;
+            int bg = bgRow();
+            if (bg >= 0 && focus >= bg && focus < bg + BG_ROWS) {
+                adjustBackground(focus - bg, dir);
+                return;
+            }
+            if (focus == TEMPERATURE_ROW) {
+                int at = java.util.Arrays.asList(UNITS).indexOf(Prefs.temperature());
+                Prefs.setTemperature(UNITS[(at + dir + UNITS.length) % UNITS.length]);
+            } else if (focus == THEME_ROW) {
+                int at = java.util.Arrays.asList(THEMES).indexOf(Prefs.theme());
+                Prefs.setTheme(THEMES[(at + dir + THEMES.length) % THEMES.length]);
+            } else if (focus == soundsRow()) {
+                Prefs.setSounds(!Prefs.sounds());
+            } else if (focus == weatherRow()) {
+                Prefs.setWeather(!Prefs.weather());
+            } else {
+                return;   // language and city open their own screens on OK
             }
             HomeData.get(getContext()).settingsChanged();
+        }
+
+        private void adjustBackground(int row, int dir) {
+            Backgrounds b = Backgrounds.get(getContext());
+            switch (row) {
+                case BG_THEME: {
+                    String[] themes = BackgroundRules.THEMES;
+                    int at = java.util.Arrays.asList(themes).indexOf(Prefs.bgTheme());
+                    Prefs.setBgTheme(themes[(at + dir + themes.length) % themes.length]);   // turns Keep off
+                    b.themeChanged();
+                    break;
+                }
+                case BG_EVERY: Prefs.setBgEvery("day".equals(Prefs.bgEvery()) ? "hour" : "day"); break;
+                case BG_KEEP: Prefs.setBgKeep(!Prefs.bgKeep()); break;
+                default:
+                    // New background now: only with the next one on the TV (the row says Loading until then).
+                    if (dir > 0 && b.active(getContext()) && b.hasNext()) b.skip();
+                    break;
+            }
         }
 
         private void askCity() {
@@ -960,9 +1156,10 @@ public class SettingsActivity extends Activity {
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
             c.drawText(keys ? Ui.tr("Remote Buttons") : Ui.tr("Home Settings"),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
+            float step = listStep(), rowH = listRowH();
             for (int i = 0; i < labels.length; i++) {
-                float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
-                rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
+                float y = (LIST_TOP + 20 + i * step) * k;
+                rowRect.set(LIST_X * k, y, LIST_R * k, y + rowH * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
                 rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
@@ -971,7 +1168,7 @@ public class SettingsActivity extends Activity {
                 c.drawText(values[i], rowRect.right - 30 * k, base, rowValue);
             }
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
-            float hy = (LIST_TOP + 20 + labels.length * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
+            float hy = (LIST_TOP + 20 + labels.length * step + 36) * k;
             c.drawText(Ui.tr("OK or the arrows change the value."), LIST_X * k + 30 * k, hy, hint);
             if (keys) {
                 c.drawText(RemoteKeys.VESTEL ? Ui.tr("YouTube, Prime Video and Google Play: the TV itself controls those buttons.")
@@ -982,6 +1179,15 @@ public class SettingsActivity extends Activity {
                         : Ui.tr("TCL remote buttons: on this TV they work as always."), LIST_X * k + 30 * k, hy + 38 * k, hint);
             }
         }
+
+        /** Home Settings with the background rows has up to 12: shorter rows, so all fit on the screen. */
+        private boolean compactList() {
+            return screen == HOME_SETTINGS && rowCount() > 10;
+        }
+
+        private float listRowH() { return compactList() ? ROW_H - 2 : LIST_ROW_H; }
+
+        private float listStep() { return compactList() ? ROW_H - 2 + MAIN_GAP : LIST_ROW_H + LIST_ROW_GAP; }
 
         private void activate() {
             Context c = getContext();
@@ -998,11 +1204,11 @@ public class SettingsActivity extends Activity {
                 String[] city = cities.get(pickScroll + focus);
                 Prefs.setCity(city[1], city[2], city[3]);
                 HomeData.get(c).settingsChanged();
-                focus = CITY_ROW;
+                focus = cityRow();
                 screen = HOME_SETTINGS;
             } else if (screen == PICKER && pickFor == PICK_LANGUAGE) {
                 Prefs.setLanguage(languageChoices()[pickScroll + focus]);
-                focus = 0;
+                focus = LANGUAGE_ROW;
                 screen = HOME_SETTINGS;
             } else if (screen == PICKER) {
                 int at = pickScroll + focus;
@@ -1015,9 +1221,9 @@ public class SettingsActivity extends Activity {
                 return;
             } else if (screen == REMOTE_KEYS) {
                 openPicker(focus + 1);
-            } else if (screen == HOME_SETTINGS && focus == 0) {
+            } else if (screen == HOME_SETTINGS && focus == LANGUAGE_ROW) {
                 openPicker(PICK_LANGUAGE);
-            } else if (screen == HOME_SETTINGS && focus == CITY_ROW) {
+            } else if (screen == HOME_SETTINGS && focus == cityRow()) {
                 askCity();
                 return;
             } else if (screen == HOME_SETTINGS) {
@@ -1034,6 +1240,7 @@ public class SettingsActivity extends Activity {
             } else if (focus == 2) {
                 screen = HOME_SETTINGS;
                 focus = 0;
+                if (Backgrounds.hasKey()) Backgrounds.get(c).prepare();
             } else if (focus == 3) {
                 openShelfEditor(false);
             } else if (focus == 4) {

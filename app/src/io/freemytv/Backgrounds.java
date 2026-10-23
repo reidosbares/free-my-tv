@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Looper;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -92,6 +93,21 @@ final class Backgrounds {
     }
 
     Photo currentPhoto() { return current; }
+
+    /** The next photo is on the TV, without touching the disk (for drawing): kept in step with next on io. */
+    boolean hasNext() { return next != null; }
+
+    /** current.jpg, for Home Settings' preview (read it off the UI thread). */
+    File currentFile() { return file("current.jpg"); }
+
+    /** Home Settings opened: reads the state if it wasn't, says so, and fetches the next photo if it's missing. */
+    void prepare() {
+        io.execute(() -> {
+            load();
+            notifyListeners();
+            ensureNext();
+        });
+    }
 
     boolean nextReady() {
         Photo n = next;
@@ -236,7 +252,7 @@ final class Backgrounds {
                 String slug = src.substring("topics=".length());
                 url = url.replace("topics=" + slug, "topics=" + topicId(slug));
             }
-            JSONObject o = new JSONObject(get(url));
+            JSONObject o = pick(new JSONArray(get(url)), BackgroundRules.topic(theme));
             String raw = o.getJSONObject("urls").getString("raw");
             Photo p = new Photo();
             p.id = o.getString("id");
@@ -249,6 +265,8 @@ final class Backgrounds {
             next = p;
             failedAt = 0;
             save();
+            AppLog.w("backgrounds: next " + p.id + " (" + theme + ")");
+            notifyListeners();   // Home Settings' "New background now" stops saying Loading
         } catch (Exception e) {
             failed(e);
             save();
@@ -258,6 +276,26 @@ final class Backgrounds {
             notifyListeners();
             if (current != null) ensureNext();
         }
+    }
+
+    /**
+     * The first photo that's not the one on screen and, for a topic, that Unsplash approved for it: the random endpoint
+     * also returns photos only submitted to the topic, rejected ones included (a subway platform in Nature).
+     */
+    private JSONObject pick(JSONArray photos, String topic) throws IOException {
+        Photo c = current;
+        for (int i = 0; i < photos.length(); i++) {
+            JSONObject o = photos.optJSONObject(i);
+            if (o == null || o.optJSONObject("urls") == null) continue;
+            if (c != null && c.id != null && c.id.equals(o.optString("id"))) continue;
+            if (topic != null) {
+                JSONObject subs = o.optJSONObject("topic_submissions");
+                JSONObject sub = subs == null ? null : subs.optJSONObject(topic);
+                if (sub == null || !"approved".equals(sub.optString("status"))) continue;
+            }
+            return o;
+        }
+        throw new IOException("no photo of the theme");
     }
 
     private String topicId(String slug) throws Exception {
@@ -372,6 +410,8 @@ final class Backgrounds {
             Photo c = photo(o.optJSONObject("current")), n = photo(o.optJSONObject("next"));
             current = c != null && file("current.jpg").exists() ? c : null;
             next = n != null && file("next.jpg").exists() ? n : null;
+            AppLog.w("backgrounds: current " + (current == null ? "none" : current.id + " (" + current.theme + ")")
+                    + ", next " + (next == null ? "none" : next.id + " (" + next.theme + ")"));
         } catch (Exception e) {
             AppLog.w("backgrounds state: " + e.getClass().getSimpleName());
         }
