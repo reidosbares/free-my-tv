@@ -132,6 +132,14 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private GlassMath.Sampler photoBg;
     private boolean photoPending;
     private long photoAt;
+    // At night the photo is darkened as on the home screen (0.45), and the glass clock reads it so.
+    private static final float NIGHT_DARKEN = 0.45f;
+    private final android.graphics.ColorFilter nightVeil = new android.graphics.ColorMatrixColorFilter(new float[] {
+        1 - NIGHT_DARKEN, 0, 0, 0, 0,
+        0, 1 - NIGHT_DARKEN, 0, 0, 0,
+        0, 0, 1 - NIGHT_DARKEN, 0, 0,
+        0, 0, 0, 1, 0});
+    private boolean photoNight;
     private String photoAuthor = "", creditText = "";
     private int creditGeneration = -1;
     private final Rect screenRect = new Rect();
@@ -163,6 +171,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             football.refreshIfStale();
             recs.refreshIfStale();
             recs.prefetchAll();
+            updateNight();
             dirty = true;
             chromeDirty = true;
             prepareNext();
@@ -198,6 +207,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         lastFrame = 0;
         failed.clear();
         fallback = recs.showcase().isEmpty();
+        updateNight();
         loadPhoto();
         data.addListener(this);
         football.addListener(this);
@@ -252,6 +262,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     }
 
     @Override public void onData() {
+        updateNight();
         dirty = true;
         chromeDirty = true;
         invalidate();
@@ -280,7 +291,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         fallbackLook.refraction = 7 * k;
         screenRect.set(0, 0, w, h);
         if (bgPhoto != null) photoBg = GlassMath.grid(bgPhoto.frost, Backdrop.FW, Backdrop.FH, w, h);
-        creditPaint = Ui.text(Ui.medium, 22 * k, 0x99FFFFFF);
+        creditPaint = Ui.text(Ui.medium, 22 * k, 0xCCFFFFFF);
         creditPaint.setTextAlign(Paint.Align.RIGHT);
         creditPaint.setShadowLayer(22 * k, 0, 2 * k, 0x59000000);
         bubbleRim.setStyle(Paint.Style.STROKE);
@@ -764,6 +775,15 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         });
     }
 
+    /** Night as the home screen sees it (HomeData.isNight: the sun, or the Light or Dark design). */
+    private void updateNight() {
+        boolean n = data.isNight(System.currentTimeMillis());
+        if (n == photoNight) return;
+        photoNight = n;
+        dirty = true;
+        invalidate();
+    }
+
     private void drawFallback(Canvas canvas, long up, float alpha) {
         float t = (up - startedAt) / 1000f;
         if (photoPending) {
@@ -774,7 +794,9 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             canvas.drawRect(0, 0, w, h, black);
             alpha *= fadeIn(up - photoAt, FIRST_MS);
             photoPaint.setAlpha(Math.round(255 * alpha));
+            photoPaint.setColorFilter(photoNight ? nightVeil : null);
             canvas.drawBitmap(bgPhoto.image, null, screenRect, photoPaint);
+            photoPaint.setColorFilter(null);
         } else {
             if (up - lastSky >= 100) {
                 lastSky = up;
@@ -809,6 +831,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         // Over the photo, the glass reads its frosted version at the undrifted position (40 px of drift at most, over
         // a photo blurred down to 1/10: no visible difference).
         GlassMath.Sampler bg = bgPhoto != null && photoBg != null ? photoBg : fallbackBg;
+        fallbackLook.darken = bgPhoto != null && photoBg != null && photoNight ? NIGHT_DARKEN : 0;
         if (running) glassClock.request(clock, clockPaint, left, clockBase, bg, fallbackLook, onGlassClock);
         Bitmap baked = glassClock.bitmap();
         if (baked != null) c.drawBitmap(baked, glassClock.x(), glassClock.y(), bakedPaint);

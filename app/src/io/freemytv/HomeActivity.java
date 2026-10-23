@@ -70,8 +70,8 @@ public class HomeActivity extends Activity {
         super.onTrimMemory(level);
         if (level >= TRIM_MEMORY_COMPLETE) {
             Recs.get(this).trim();
-            Backgrounds.get(this).trim();
-            HomeView.releaseGlass();
+            // The photo on screen stays (dropping it frees nothing), and with it the clock's glass baked over it.
+            if (Backgrounds.get(this).trim(home == null ? null : home.backdrop())) HomeView.releaseGlass();
         }
     }
 

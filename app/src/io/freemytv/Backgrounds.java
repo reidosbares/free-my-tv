@@ -182,7 +182,8 @@ final class Backgrounds {
             boolean keepNext = n != null && theme.equals(n.theme);
             if (keepNext && c != null && theme.equals(c.theme)) return;
             if (!keepNext) dropNext();
-            if (c != null && !theme.equals(c.theme)) {
+            // The photo on screen stays until one of the new theme is ready (offline, it just stays); Plain drops it.
+            if (c != null && !BackgroundRules.keepOnThemeChange(c.theme, theme)) {
                 current = null;
                 decoded = null;
                 delete(file("current.jpg"));
@@ -190,16 +191,34 @@ final class Backgrounds {
             }
             // A choice on the TV is tried at once, unless Unsplash refused the key or the hour's quota is spent.
             if (failCode != 403 && failCode != 429) failedAt = 0;
+            if (failedAt == 0) failCode = 0;
             save();
             if (!active(context)) return;
-            if (current == null && keepNext && promote()) notifyListeners();
+            if (keepNext && replacesCurrent(theme) && promote()) notifyListeners();
             ensureNext();
         });
     }
 
-    /** Memory is short: the decoded photo goes; current() decodes it again. */
-    void trim() {
+    /**
+     * Memory is short: the decoded photo goes unless it's `onScreen` (the home screen holds it anyway, so nothing would
+     * be freed); current() decodes it again. True when it went (or there was none).
+     */
+    boolean trim(Backdrop onScreen) {
+        Backdrop b = decoded;
+        if (b != null && b == onScreen) return false;
         decoded = null;
+        return true;
+    }
+
+    /** The last download failed and no other is tried yet: in the back-off, or Unsplash refused the key. */
+    boolean failing() {
+        long at = failedAt, now = System.currentTimeMillis();
+        return (at != 0 && now >= at && now < BackgroundRules.retryAt(at)) || failCode == 401;
+    }
+
+    private boolean replacesCurrent(String theme) {
+        Photo c = current;
+        return BackgroundRules.replaceWithNext(c == null ? null : c.theme, theme);
     }
 
     // MARK: - Work on io
@@ -320,9 +339,11 @@ final class Backgrounds {
         } catch (Exception e) {
             failed(e);
             save();
+            notifyListeners();   // Home Settings' "New background now" stops saying Loading
             return;
         }
-        if (current == null && promote()) {   // nothing on screen yet: show it now, and fetch the one after
+        // Nothing on screen yet, or a photo of the theme before: show it now, and fetch the one after.
+        if (replacesCurrent(theme) && promote()) {
             notifyListeners();
             if (current != null) ensureNext();
         }

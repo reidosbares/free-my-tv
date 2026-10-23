@@ -41,6 +41,10 @@ public final class BackgroundRulesTest {
         check(!due(1, now, "hour", true), "kept is never due");
         check(due(now + h, now, "hour", false), "clock moved back is due");
         check(retryAt(now) == now + 600_000L, "10 min back-off");
+        check(keepOnThemeChange("nature", "aerials") && keepOnThemeChange("surprise", "nature"), "another theme: the photo stays until the new one is ready");
+        check(!keepOnThemeChange("nature", "plain"), "plain: the photo goes");
+        check(replaceWithNext(null, "nature") && replaceWithNext("nature", "aerials"), "nothing on screen, or another theme: the next goes up at once");
+        check(!replaceWithNext("nature", "nature") && !replaceWithNext("surprise", "travel"), "same theme: the next waits its turn");
         check("day".equals(every("day")) && "hour".equals(every("x")) && "hour".equals(every(null)), "every");
 
         if (failures > 0) {

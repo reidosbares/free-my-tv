@@ -847,7 +847,7 @@ public class SettingsActivity extends Activity {
                 v[bg + BG_THEME] = bgThemeName(Prefs.bgTheme());
                 v[bg + BG_EVERY] = "day".equals(Prefs.bgEvery()) ? Ui.tr("Every day") : Ui.tr("Every hour");
                 v[bg + BG_KEEP] = onOff(Prefs.bgKeep());
-                v[bg + BG_NOW] = !b.active(getContext()) ? "—" : b.hasNext() ? "" : Ui.tr("Loading…");
+                v[bg + BG_NOW] = !b.active(getContext()) ? "—" : b.hasNext() ? "" : b.failing() ? "—" : Ui.tr("Loading…");
             }
             v[soundsRow()] = onOff(Prefs.sounds());
             v[weatherRow()] = onOff(Prefs.weather());

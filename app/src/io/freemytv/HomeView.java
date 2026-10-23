@@ -221,8 +221,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private String creditText = "";
     private int creditGeneration = -1;
     private Paint creditPaint;
-    private android.graphics.ColorFilter photoVeilFilter;
-    private float photoVeilAmount = -1;
+    private static final int PHOTO_VEIL_STEPS = 64;
+    private final android.graphics.ColorFilter[] photoVeils = new android.graphics.ColorFilter[PHOTO_VEIL_STEPS + 1];
     private final int[] frostMix = new int[Backdrop.FW * Backdrop.FH];
 
     // Bottom drawer
@@ -517,6 +517,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         click.release();
     }
 
+    /** The background on screen (or fading in), for onTrimMemory: it stays decoded. */
+    Backdrop backdrop() {
+        return bgTo;
+    }
+
     /** Starting state (Home pressed while the home screen is showing): first app focused, drawer and sheet closed. */
     void reset(boolean animated) {
         wake();
@@ -682,7 +687,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lClock.setLetterSpacing(-0.03f);
         clockGlassAdd.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
         lWeather = Ui.text(Ui.medium, 34 * k, L_DIM);
-        creditPaint = Ui.text(Ui.medium, 22 * k, 0x99FFFFFF);
+        creditPaint = Ui.text(Ui.medium, 22 * k, 0xCCFFFFFF);
         creditPaint.setTextAlign(Paint.Align.RIGHT);
         shadowPhoto = -1;
         lightGradient = null;
@@ -1002,9 +1007,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         nightPair = false;
     }
 
-    /** An Unsplash photo (built for the photo look): pick photos have the light version, these don't. */
+    /** An Unsplash photo (built for the photo look), not a pick's backdrop. */
     private static boolean isPhoto(Backdrop b) {
-        return b != null && b.lightImage == null;
+        return b != null && b.photo;
     }
 
     /** Whether the glass can read this backdrop (glassOf isn't null), without building the night blend. */
@@ -3153,8 +3158,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float e = bgFadeAt == 0 ? 1 : fadeEase(bgFadeAt, up);
         boolean fading = bgFadeAt != 0;
         // Drawer open: the background lightens (by day) or darkens (at night), as a filter on the drawing itself.
-        android.graphics.ColorFilter v = veil(tone(0.32f, 0.42f) * Ui.clamp(drawer.value), blend(0xFFFFFFFF, 0xFF000000, night));
-        if (bgTo == null || (fading && bgFrom == null)) {
+        // (A photo has its own veil: photoVeil.)
+        boolean gradient = bgTo == null || (fading && bgFrom == null);
+        boolean other = (bgTo != null && !isPhoto(bgTo)) || (fading && bgFrom != null && !isPhoto(bgFrom));
+        android.graphics.ColorFilter v = gradient || other
+                ? veil(tone(0.32f, 0.42f) * Ui.clamp(drawer.value), blend(0xFFFFFFFF, 0xFF000000, night)) : null;
+        if (gradient) {
             if (lightGradient == null) lightGradient = Ui.gradient(h, 0xFFF5F5F7, 0xFFE2E2E7);
             if (nightGradient == null) nightGradient = Ui.gradient(h, 0xFF1C1C1E, 0xFF0B0B0D);
             fill.setColorFilter(v);
@@ -3199,18 +3208,23 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (d > 0.004f && b.frostImage != null) drawImage(c, b.frostImage, alpha * d);
     }
 
-    /** veil() toward black for the photo, with its own cache (the gradient's veil may be drawn in the same frame). */
+    /**
+     * veil() toward black for the photo, in PHOTO_VEIL_STEPS steps, each filter made once: the drawer's slide doesn't
+     * allocate one per frame (the gradient's veil may be drawn in the same frame, so not that cache).
+     */
     private android.graphics.ColorFilter photoVeil(float amount) {
-        if (amount <= 0.002f) return null;
-        amount = Math.round(amount * 255) / 255f;
-        if (amount == photoVeilAmount) return photoVeilFilter;
-        photoVeilAmount = amount;
-        float keep = 1 - amount;
-        return photoVeilFilter = new android.graphics.ColorMatrixColorFilter(new float[] {
-            keep, 0, 0, 0, 0,
-            0, keep, 0, 0, 0,
-            0, 0, keep, 0, 0,
-            0, 0, 0, 1, 0});
+        int step = Math.round(Ui.clamp(amount) * PHOTO_VEIL_STEPS);
+        if (step == 0) return null;
+        android.graphics.ColorFilter f = photoVeils[step];
+        if (f == null) {
+            float keep = 1 - (float) step / PHOTO_VEIL_STEPS;
+            f = photoVeils[step] = new android.graphics.ColorMatrixColorFilter(new float[] {
+                keep, 0, 0, 0, 0,
+                0, keep, 0, 0, 0,
+                0, 0, keep, 0, 0,
+                0, 0, 0, 1, 0});
+        }
+        return f;
     }
 
     /**
@@ -3227,7 +3241,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             creditText = name.isEmpty() ? "Unsplash" : Ui.trf("Photo: {name}, Unsplash", "name", name);
         }
         float base = shelf.isEmpty() ? h - 60 * k : platterRect.top - 18 * k;
-        creditPaint.setColor(Ui.alpha(0x99FFFFFF, photo));
+        creditPaint.setColor(Ui.alpha(0xCCFFFFFF, photo));
         c.drawText(creditText, CONTENT_R * k, base, creditPaint);
     }
 

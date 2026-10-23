@@ -83,6 +83,19 @@ public final class BackgroundRules {
         return nowMs - shownAtMs >= interval(every);
     }
 
+    /**
+     * The theme changed: the photo on screen stays until one of the new theme is ready (offline, or with Unsplash
+     * failing, it stays), except for Plain, which has no photo.
+     */
+    public static boolean keepOnThemeChange(String currentTheme, String newTheme) {
+        return !"plain".equals(theme(newTheme));
+    }
+
+    /** A next photo that's ready goes up at once when nothing is on screen or the one there is of another theme. */
+    public static boolean replaceWithNext(String currentTheme, String theme) {
+        return currentTheme == null || !theme(theme).equals(theme(currentTheme));
+    }
+
     public static long retryAt(long failedAtMs) {
         return failedAtMs + RETRY;
     }

@@ -47,9 +47,11 @@ final class Backdrop {
     final int[] nightFrost, nightGlass; // at night: frosted (the bottom drawer's frosted glass) and glass, darkened
     final Bitmap nightImage;            // at night: the background (the darkened frosted version)
     final Bitmap frostImage;            // dark design only: frost as a mutable bitmap, for the drawer
+    final boolean photo;                // an Unsplash photo (photo() or dream()), not a pick's
 
-    private Backdrop(Bitmap image, int[] frost, int[] glass, Bitmap wide, Bitmap tall, int[] light, int[] lightGlass,
+    private Backdrop(boolean photo, Bitmap image, int[] frost, int[] glass, Bitmap wide, Bitmap tall, int[] light, int[] lightGlass,
                      int[] night, int[] nightGlass) {
+        this.photo = photo;
         this.image = image;
         this.frost = frost;
         this.glass = glass;
@@ -87,7 +89,7 @@ final class Backdrop {
             int[] night = darken(frost.clone(), 0.76f);
             int[] nightGlass = darken(glass, 0.56f);
             out.recycle();
-            return new Backdrop(null, frost, null, wide, tall, light, lightGlass, night, nightGlass);
+            return new Backdrop(false, null, frost, null, wide, tall, light, lightGlass, night, nightGlass);
         }
 
         float boost = Math.max(0, Math.min(0.3f, (luminance(out, 0, 0.22f, 0.5f, 0.62f) - 0.22f) * 1.1f));
@@ -114,7 +116,7 @@ final class Backdrop {
 
         int[] frost = reduce(out, FW, FH, 3, 3);
         int[] glass = reduce(out, GW, GH, 2, 2);
-        return new Backdrop(gpu(out), frost, glass, null, null, null, null, null, null);
+        return new Backdrop(false, gpu(out), frost, glass, null, null, null, null, null, null);
     }
 
     /**
@@ -135,7 +137,7 @@ final class Backdrop {
         c.drawRect(0, 0, W, H * 0.2f, scrim);
         int[] frost = reduce(out, FW, FH, 3, 3);
         int[] glass = reduce(out, GW, GH, 2, 2);
-        return new Backdrop(gpu(out), frost, glass, null, null, null, null, null, null);
+        return new Backdrop(true, gpu(out), frost, glass, null, null, null, null, null, null);
     }
 
     /**
@@ -160,7 +162,7 @@ final class Backdrop {
                 new float[] {0, 0.45f, 1}, Shader.TileMode.CLAMP));
         c.drawRect(0, H * 0.7f, W, H, scrim);
         int[] frost = reduce(out, FW, FH, 3, 3);
-        return new Backdrop(gpu(out), frost, null, null, null, null, null, null, null);
+        return new Backdrop(true, gpu(out), frost, null, null, null, null, null, null, null);
     }
 
     /** The photo center-cropped to fill W × H, in a new mutable bitmap (src is recycled). */
