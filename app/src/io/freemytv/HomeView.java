@@ -14,6 +14,8 @@ import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -94,12 +96,17 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final int SKY = 0, HERO = 1, STATUS = 2, PLATTER = 3, TILES = 4, DRAWER = 5, SHEET = 6, TOAST = 7;
     private static final int Z_STATUS = 0, Z_HERO = 1, Z_SHELF = 2, Z_DRAWER = 3;
     private static final ExecutorService LOADER = Executors.newSingleThreadExecutor();
+    // The big clock as frosted glass over a photo, baked on LOADER. Static: a recreated home screen (back from Home
+    // Settings) finds the same bake and shows the glass at once.
+    private static final GlassClock GLASS = new GlassClock(LOADER, new Handler(Looper.getMainLooper()));
+    private static Backdrop glassFor;
+    private static GlassMath.Sampler glassBg;
     // Light design (the L_ constants): title, tab bar, three recommendation cards and the shelf.
     // The tab bar is a 68 px capsule; the cards sit on the 5-column grid (the wide one spans 3).
     private static final float L_TITLE_BASE = 130, L_TABBAR_TOP = 158, L_TABBAR_H = 68, L_CARDS_TOP = 262, L_CARD_H = 442;
     private static final float L_TALL_W = 320, L_CARD_GAP = 40, L_BUTTON = 68, L_BUTTON_GAP = 20, L_BUTTON_CY = 103;
     private static final float L_PLATTER_TOP = 814, L_TILE_H = 126;
-    private static final float L_DATE_BASE = 330, L_CLOCK_BASE = 540, L_WEATHER_BASE = 626;
+    private static final float L_DATE_BASE = 308, L_CLOCK_BASE = 540, L_WEATHER_BASE = 626;
     private static final int L_INK = 0xFF1D1D1F, L_DIM = 0xFF6E6E73, L_FAINT = 0xFF8E8E93;
     private static String[] tabs;
     private static int tabsGeneration = -1;
@@ -267,6 +274,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private int weatherLinePrefs = -1;
     private String weatherLineLanguage = "";
     private long clockMinute = -1;
+    private final GlassMath.Look clockLook = new GlassMath.Look();
+    private final Runnable onClockGlass = this::clockGlassReady;
+    private final Paint clockGlass = new Paint(Paint.FILTER_BITMAP_FLAG), clockGlassAdd = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final RectF clockGlassBounds = new RectF();
+    private long clockFadeSeen;     // readyAt of the last clock bake whose cross-fade has been drawn to the end
     private boolean okDown, backDown;
 
     private Paint labelPaint, metaPaint, clockPaint, buttonPaint, capsuleText, tipPaint;
@@ -380,6 +392,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             updatePalette();
             checkNight(true);
             updatePicks();      // three new ones every hour
+            requestClockGlass();    // again after a failed bake (nothing to do when it's done)
             handler.postDelayed(this, 15_000);
         }
     };
@@ -468,6 +481,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (!again) reload();
         updatePalette();
         updatePicks();
+        requestClockGlass();
         if (sheetOpen) closeSheet();
         sheet.snap(sheet.target);
         motionDirty = true;
@@ -495,6 +509,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     void destroy() {
         pause();
+        GLASS.forget(onClockGlass);
+        if (activity.isFinishing()) releaseGlass();
         if (launcherApps != null) launcherApps.unregisterCallback(packages);
         click.release();
     }
@@ -660,8 +676,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lTip = Ui.text(Ui.semibold, 25 * k, L_INK);
         lTip.setTextAlign(Paint.Align.CENTER);
         lDate = Ui.text(Ui.semibold, 34 * k, L_DIM);
-        lClock = Ui.numbers(Ui.light, 200 * k, L_INK);
-        lClock.setLetterSpacing(-0.01f);
+        lClock = Ui.numbers(Ui.bold, 250 * k, L_INK);
+        lClock.setLetterSpacing(-0.03f);
+        clockGlassAdd.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
         lWeather = Ui.text(Ui.medium, 34 * k, L_DIM);
         creditPaint = Ui.text(Ui.medium, 22 * k, 0x99FFFFFF);
         creditPaint.setTextAlign(Paint.Align.RIGHT);
@@ -734,6 +751,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean heroFading = tickHeroFade(up);
         boolean bgFading = tickBackgroundFade(up);
         boolean nightMoving = tickNight(up);
+        boolean clockFading = tickClockFade(up);
 
         if (drawerMoving || sheetMoving || motionDirty) updateMotion();
         // Opening and closing the drawer only moves the cached layers: redrawing the glass on every frame made the TV
@@ -761,7 +779,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
         // Busy: something is moving, or the sheet or the drawer is open.
         boolean busy = tilesMoving || statusMoving || heroMoving || drawerItemsMoving || gridMoving || drawerMoving
-                || sheetMoving || toastFading || heroFading || bgFading || nightMoving || sheetOpen || sheet.value > 0.001f
+                || sheetMoving || toastFading || heroFading || bgFading || nightMoving || clockFading || sheetOpen || sheet.value > 0.001f
                 || drawerOpen || drawer.value > 0.001f || toast != null || !toasts.isEmpty();
         idle = !busy;
         if (busy) Choreographer.getInstance().postFrameCallback(this);
@@ -816,7 +834,42 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         clockMinute = minute;
         clockText = Ui.clock(now);
         dateText = Ui.date(now);
+        requestClockGlass();
         return true;
+    }
+
+    /** Bakes the big clock as glass over the photo (on LOADER), once the photo and the day or night look have settled. */
+    private void requestClockGlass() {
+        if (!running || lClock == null || clockText.isEmpty() || !isPhoto(bgTo) || bgTo.frost == null || bgFadeAt != 0
+                || nightAt != 0 || picksOn()) return;
+        if (bgTo != glassFor) {
+            glassFor = bgTo;
+            glassBg = GlassMath.grid(bgTo.frost, Backdrop.FW, Backdrop.FH, w, h);
+        }
+        clockLook.refraction = 7 * k;
+        clockLook.darken = 0.45f * night;     // as the photo is darkened at night
+        GLASS.request(clockText, lClock, MARGIN * k, L_CLOCK_BASE * k, glassBg, clockLook, onClockGlass);
+    }
+
+    private void clockGlassReady() {
+        heroLayer.invalidate();
+        wake();
+    }
+
+    /** Redraws the clock while a new bake fades in; true until it's done. */
+    private boolean tickClockFade(long up) {
+        long at = GLASS.readyAt();
+        if (at == 0 || at == clockFadeSeen) return false;
+        heroLayer.invalidate();
+        if (up - at >= FADE_MS) clockFadeSeen = at;
+        return true;
+    }
+
+    /** Frees the glass clock's bitmaps (the home screen is gone, or memory is short); the next resume bakes again. */
+    static void releaseGlass() {
+        GLASS.release();
+        glassFor = null;
+        glassBg = null;
     }
 
     private void updatePalette() {
@@ -1039,6 +1092,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         } else if (bgFadeAt == 0 && bgTo == null) {
             neutralGlass();
         }
+        if (nightAt == 0) requestClockGlass();    // settled at day or night: the glass reads the photo as it is now
         heroDirty = statusDirty = tilesDirty = drawerDirty = true;
         sky.invalidate();
         platter.invalidate();
@@ -1125,6 +1179,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 scene.setFrost(frostOf(bgTo));
                 if (hasGlass(bgTo)) scene.setGlassImage(glassOf(bgTo));
             }
+            requestClockGlass();
         }
         return true;
     }
@@ -3212,7 +3267,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void drawClock(Canvas c) {
         float x = MARGIN * k;
         c.drawText(dateText, x - Ui.leftBearing(lDate, dateText), L_DATE_BASE * k, lDate);
-        c.drawText(clockText, x - Ui.leftBearing(lClock, clockText), L_CLOCK_BASE * k, lClock);
+        drawBigClock(c, x);
         HomeData.Weather wx = data.weather;
         if (!Prefs.weather() || Double.isNaN(wx.temp)) return;
         if (data.weatherAt != weatherLineAt || Prefs.version != weatherLinePrefs || !Ui.language.equals(weatherLineLanguage)) {
@@ -3227,6 +3282,42 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float sw = Symbols.width(getContext(), symbol, size);
         Symbols.draw(getContext(), c, symbol, x + sw / 2, base - Ui.halfCap(lWeather), size, lWeather.getColor());
         c.drawText(weatherLine, x + sw + 16 * k, base, lWeather);
+    }
+
+    /**
+     * The big clock: over a photo, the baked glass (cross-fading from the last bake), × photo; bold solid text on Plain
+     * and until the first bake is ready.
+     */
+    private void drawBigClock(Canvas c, float x) {
+        Bitmap now = GLASS.bitmap(), old = GLASS.previous();
+        // A bake of another minute only while the new one is on its way (a failed bake falls back to the text).
+        boolean fresh = now != null && !now.isRecycled() && (clockText.equals(GLASS.bakedText()) || GLASS.pending());
+        float g = fresh ? photo : 0;
+        float e = fresh ? fadeEase(GLASS.readyAt(), SystemClock.uptimeMillis()) : 1;
+        boolean crossfade = e < 1 && old != null && !old.isRecycled();
+        float solid = 1 - g * (crossfade ? 1 : e);
+        if (solid > 0.004f) {
+            int color = lClock.getColor();
+            lClock.setAlpha(Math.round((color >>> 24) * solid));
+            c.drawText(clockText, x - Ui.leftBearing(lClock, clockText), L_CLOCK_BASE * k, lClock);
+            lClock.setColor(color);
+        }
+        if (g <= 0.004f) return;
+        if (!crossfade) {
+            clockGlass.setAlpha(Math.round(255 * g * e));
+            c.drawBitmap(now, GLASS.x(), GLASS.y(), clockGlass);
+            return;
+        }
+        // Old and new summed in a layer (1 − e and e): the digits that stay the same don't dip or darken.
+        float ox = GLASS.previousX(), oy = GLASS.previousY();
+        clockGlassBounds.set(Math.min(ox, GLASS.x()), Math.min(oy, GLASS.y()),
+                Math.max(ox + old.getWidth(), GLASS.x() + now.getWidth()), Math.max(oy + old.getHeight(), GLASS.y() + now.getHeight()));
+        int save = c.saveLayerAlpha(clockGlassBounds, Math.round(255 * g));
+        clockGlass.setAlpha(Math.round(255 * (1 - e)));
+        c.drawBitmap(old, ox, oy, clockGlass);
+        clockGlassAdd.setAlpha(Math.round(255 * e));
+        c.drawBitmap(now, GLASS.x(), GLASS.y(), clockGlassAdd);
+        c.restoreToCount(save);
     }
 
     /**

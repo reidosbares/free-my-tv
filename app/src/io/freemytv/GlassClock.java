@@ -18,9 +18,13 @@ import java.util.concurrent.Executor;
 final class GlassClock {
     private final Executor worker;
     private final Handler main;
-    private int generation;
+    // Read by the worker too, to skip a bake that was cancelled (release, or a newer request) before it starts.
+    private volatile int generation;
     private Bitmap bitmap, previous;
-    private float x, y;
+    private String bakedText;
+    private Runnable ready;
+    private boolean busy;
+    private float x, y, previousX, previousY;
     private long readyAt;
     // The last request, to skip one that would bake the same thing.
     private String text;
@@ -37,6 +41,8 @@ final class GlassClock {
     void request(String text, Paint paint, float left, float baseline, GlassMath.Sampler bg, GlassMath.Look look,
                  final Runnable onReady) {
         if (text == null || text.isEmpty()) return;
+        // The latest caller hears about a bake already on its way (another view asking for the same one).
+        ready = onReady;
         if (same(text, paint, left, baseline, bg, look)) return;
         this.text = text;
         this.left = left;
@@ -45,6 +51,7 @@ final class GlassClock {
         this.bg = bg;
         copy(look, this.look);
         final int gen = ++generation;
+        busy = true;
         final Paint p = new Paint(paint);
         p.clearShadowLayer();
         p.setColor(0xFFFFFFFF);
@@ -52,12 +59,20 @@ final class GlassClock {
         final GlassMath.Look l = copy(look, new GlassMath.Look());
         final float k = scale();
         worker.execute(() -> {
+            if (gen != generation) return;
             final float[] at = new float[2];
             final Bitmap baked;
             try {
                 baked = bake(text, p, left, baseline, bg, l, k, at);
             } catch (Exception | OutOfMemoryError e) {
                 AppLog.w("glass clock: " + e.getMessage());
+                // Forget the request, so asking again bakes again instead of keeping the old time.
+                main.post(() -> {
+                    if (gen != generation) return;
+                    this.text = null;
+                    busy = false;
+                    if (ready != null) ready.run();
+                });
                 return;
             }
             main.post(() -> {
@@ -70,16 +85,30 @@ final class GlassClock {
                 if (gone != null) main.postDelayed(gone::recycle, 1000);
                 previous = bitmap;
                 bitmap = baked;
+                bakedText = text;
+                previousX = x;
+                previousY = y;
+                busy = false;
                 x = at[0];
                 y = at[1];
                 readyAt = SystemClock.uptimeMillis();
-                if (onReady != null) onReady.run();
+                if (ready != null) ready.run();
             });
         });
     }
 
     Bitmap bitmap() {
         return bitmap;
+    }
+
+    /** The text the current bitmap shows (null without one). */
+    String bakedText() {
+        return bakedText;
+    }
+
+    /** A bake asked for and not done yet (neither ready nor failed). */
+    boolean pending() {
+        return busy;
     }
 
     Bitmap previous() {
@@ -94,15 +123,30 @@ final class GlassClock {
         return y;
     }
 
+    float previousX() {
+        return previousX;
+    }
+
+    float previousY() {
+        return previousY;
+    }
+
     /** SystemClock.uptimeMillis() when the current bitmap became ready. */
     long readyAt() {
         return readyAt;
     }
 
+    /** Stops calling `onReady` (its view is gone), keeping the bitmaps for the next caller. */
+    void forget(Runnable onReady) {
+        if (ready == onReady) ready = null;
+    }
+
     /** Drops pending bakes and frees the bitmaps (after the frames that may still draw them). */
     void release() {
         generation++;
-        text = null;
+        text = bakedText = null;
+        ready = null;
+        busy = false;
         final Bitmap a = bitmap, b = previous;
         bitmap = previous = null;
         main.postDelayed(() -> {

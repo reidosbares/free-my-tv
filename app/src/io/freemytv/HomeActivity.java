@@ -71,6 +71,7 @@ public class HomeActivity extends Activity {
         if (level >= TRIM_MEMORY_COMPLETE) {
             Recs.get(this).trim();
             Backgrounds.get(this).trim();
+            HomeView.releaseGlass();
         }
     }
 

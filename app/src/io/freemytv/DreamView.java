@@ -719,7 +719,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         // Centred on its ink, as frosted glass once baked (it drifts with `content`).
         clockPaint.getTextBounds(clock, 0, clock.length(), clockInk);
         float left = Math.round(cx - clockInk.width() / 2f);
-        glassClock.request(clock, clockPaint, left, clockBase, fallbackBg, fallbackLook, onGlassClock);
+        if (running) glassClock.request(clock, clockPaint, left, clockBase, fallbackBg, fallbackLook, onGlassClock);
         Bitmap baked = glassClock.bitmap();
         if (baked != null) c.drawBitmap(baked, glassClock.x(), glassClock.y(), bakedPaint);
         else c.drawText(clock, left - clockInk.left, clockBase, clockFlat);
