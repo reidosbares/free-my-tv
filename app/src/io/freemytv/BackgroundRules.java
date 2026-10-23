@@ -36,7 +36,7 @@ public final class BackgroundRules {
     }
 
     public static String sized(String raw, int w, int h) {
-        return raw + (raw.contains("?") ? "&" : "?") + "w=" + w + "&h=" + h + "&fit=crop&crop=entropy&fm=jpg&q=82";
+        return raw + (raw.contains("?") ? "&" : "?") + "w=" + w + "&h=" + h + "&fit=crop&crop=entropy&fm=jpg&q=92";
     }
 
     public static long interval(String every) {

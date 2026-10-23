@@ -913,8 +913,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         photoFrom = photo;
         if (isPhoto(b)) shownPhoto = backgrounds.currentPhoto();
         nightPair = false;
-        if (b == null || glassOf(b) == null) return;
-        if (bgFrom == null || glassOf(bgFrom) == null) {
+        if (!hasGlass(b)) return;
+        if (!hasGlass(bgFrom)) {
             scene.setFrost(frostOf(b));
             scene.setGlassImage(glassOf(b));
         } else {
@@ -944,9 +944,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return b != null && b.lightImage == null;
     }
 
+    /** Whether the glass can read this backdrop (glassOf isn't null), without building the night blend. */
+    private static boolean hasGlass(Backdrop b) {
+        return b != null && (isPhoto(b) ? b.glass != null : b.lightGlass != null);
+    }
+
     /** A photo's glass or frost pixels, darkened at night as the photo itself is (into `out`, for the current one). */
     private int[] photoNight(int[] px, int[] out, Backdrop b) {
-        if (night <= 0.001f || b != bgTo || px.length != out.length) return px;
+        if (scene.flat() || night <= 0.001f || b != bgTo || px.length != out.length) return px;   // flat: never read
         float f = 0.45f * night;
         for (int i = 0; i < out.length; i++) out[i] = mix(px[i], 0xFF000000, f);
         return out;
@@ -1053,17 +1058,29 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return onLight + (onDark - onLight) * dark();
     }
 
+    /** How much of the photo's day look is on: clear glass and white text (at night the night look stays). */
+    private float clearLook() {
+        return photo * (1 - night);
+    }
+
+    /** tone(), and white over a photo by day. */
+    private int ink(int onLight, int onDark, int onPhoto) {
+        int t = tone(onLight, onDark);
+        float w = clearLook();
+        return w <= 0.001f ? t : blend(t, onPhoto, w);
+    }
+
     /** Text colors for the current night value (dark by day, white at night). */
     private void applyTone() {
-        lTitle.setColor(tone(L_INK, WHITE));
-        lTab.setColor(tone(L_DIM, 0xFF8E8E93));
-        lTabOn.setColor(tone(L_INK, WHITE));
-        lCardTitle.setColor(tone(L_INK, WHITE));
-        lCardMeta.setColor(tone(L_DIM, 0xFF98989D));
-        lTip.setColor(tone(L_INK, WHITE));
-        lDate.setColor(tone(L_DIM, 0xFF98989D));
-        lClock.setColor(tone(L_INK, WHITE));
-        lWeather.setColor(tone(L_DIM, 0xFF98989D));
+        lTitle.setColor(ink(L_INK, WHITE, 0xFFFFFFFF));
+        lTab.setColor(ink(L_DIM, 0xFF8E8E93, 0xEBFFFFFF));
+        lTabOn.setColor(ink(L_INK, WHITE, 0xFFFFFFFF));
+        lCardTitle.setColor(ink(L_INK, WHITE, 0xFFFFFFFF));
+        lCardMeta.setColor(ink(L_DIM, 0xFF98989D, 0xEBFFFFFF));
+        lTip.setColor(ink(L_INK, WHITE, 0xFFFFFFFF));
+        lDate.setColor(ink(L_DIM, 0xFF98989D, 0xEBFFFFFF));
+        lClock.setColor(ink(L_INK, WHITE, 0xFFFFFFFF));
+        lWeather.setColor(ink(L_DIM, 0xFF98989D, 0xEBFFFFFF));
         if (photo != shadowPhoto) {   // white text over a photo gets the soft shadow
             shadowPhoto = photo;
             softShadow(lTitle);
@@ -1090,7 +1107,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float photoTo = isPhoto(bgTo) ? 1 : 0;
         photo = photoFrom + (photoTo - photoFrom) * e;
         if (photoFrom != photoTo) heroDirty = tilesDirty = true;   // the text and the glass follow the photo
-        if (bgTo != null && bgFrom != null && glassOf(bgFrom) != null && glassOf(bgTo) != null) {
+        if (hasGlass(bgFrom) && hasGlass(bgTo)) {
             if (drawerLayer.getVisibility() == VISIBLE || toast != null) {
                 int[] from = frostOf(bgFrom), to = frostOf(bgTo);
                 for (int i = 0; i < frostMix.length; i++) frostMix[i] = mix(from[i], to[i], e);
@@ -1106,7 +1123,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 neutralGlass();
             } else {
                 scene.setFrost(frostOf(bgTo));
-                if (glassOf(bgTo) != null) scene.setGlassImage(glassOf(bgTo));
+                if (hasGlass(bgTo)) scene.setGlassImage(glassOf(bgTo));
             }
         }
         return true;
@@ -1290,7 +1307,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         shadow.setColor(tone(0x1F000000, 0x52000000));
         shadows.draw(c, tmp, radius, SHADOW_BLUR * k, shadow);
         // White glass by day; smoked glass at night; clear glass over a photo by day.
-        float clear = photo * (1 - night);
+        float clear = clearLook();
         fadedLiquid(c, platterRect, radius, tone(0xFFFFFFFF, SMOKE), tone(0.42f, 0.12f), tone(0.03f, 0.08f),
                 tone(30, 34) * k, tone(22, 28) * k, tone(0.65f, 0.95f), 1, 1 - clear);
         scene.clear(c, platterRect, radius, 0.16f * clear, clear);
@@ -1575,7 +1592,23 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             shadows.draw(c, tmp, radius, SHADOW_BLUR * k, shadow);
             scene.glass(c, r, radius, 0xFFFFFFFF, lightTint, 0, 0, 0.02f, 1, 1 - dk);
         }
-        if (dk > 0.001f) scene.glass(c, r, radius, SMOKE, 0.4f, 0, 0, 0.02f, 1, dk);
+        float clear = clearLook();
+        if (clear <= 0.001f) {
+            if (dk > 0.001f) scene.glass(c, r, radius, SMOKE, 0.4f, 0, 0, 0.02f, 1, dk);
+            return;
+        }
+        // Over a photo by day: clear glass, as on the shelf.
+        float smoke = dk * (1 - clear);
+        if (smoke > 0.004f) {
+            if (smoke >= 0.999f || !scene.flat()) {
+                scene.glass(c, r, radius, SMOKE, 0.4f, 0, 0, 0.02f, 1, smoke);
+            } else {
+                int save = c.saveLayerAlpha(r.left - 2, r.top - 2, r.right + 2, r.bottom + 2, Math.round(255 * smoke));
+                scene.glass(c, r, radius, SMOKE, 0.4f, 0, 0, 0.02f, 1, 1);
+                c.restoreToCount(save);
+            }
+        }
+        scene.clear(c, r, radius, 0.16f * clear, clear);
     }
 
     private void drawerCard(Canvas c, RectF r) {
@@ -1584,13 +1617,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void drawDrawer(Canvas c) {
         if (drawerItems.isEmpty()) return;
-        rowTitle.setColor(tone(L_DIM, 0xB3FFFFFF));
-        cardTitle.setColor(tone(L_DIM, 0xB3FFFFFF));
+        rowTitle.setColor(ink(L_DIM, 0xB3FFFFFF, 0xEBFFFFFF));
+        cardTitle.setColor(ink(L_DIM, 0xB3FFFFFF, 0xEBFFFFFF));
         cardText.setColor(drawerInk(0.95f));
-        cardDim.setColor(tone(L_DIM, 0xADFFFFFF));
-        cardDimRight.setColor(tone(L_FAINT, 0x99FFFFFF));
+        cardDim.setColor(ink(L_DIM, 0xADFFFFFF, 0xEBFFFFFF));
+        cardDimRight.setColor(ink(L_FAINT, 0x99FFFFFF, 0xD9FFFFFF));
         bigTemp.setColor(drawerInk(1));
-        hourPaint.setColor(tone(L_DIM, 0xADFFFFFF));
+        hourPaint.setColor(ink(L_DIM, 0xADFFFFFF, 0xEBFFFFFF));
         hourTemp.setColor(drawerInk(0.95f));
         float titleBase = ROW_TITLE * k;
         if (drawerInputs > 0) c.drawText(Ui.tr("Inputs"), drawerRects[0].left + 4 * k, titleBase, rowTitle);
@@ -1696,7 +1729,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private float sunItem(Canvas c, String symbol, String label, float x, float base) {
         float size = 22 * k, sw = Symbols.width(getContext(), symbol, size);
-        Symbols.draw(getContext(), c, symbol, x + sw / 2, base - Ui.halfCap(cardDim), size, tone(L_DIM, 0xB3FFFFFF));
+        Symbols.draw(getContext(), c, symbol, x + sw / 2, base - Ui.halfCap(cardDim), size, ink(L_DIM, 0xB3FFFFFF, 0xEBFFFFFF));
         c.drawText(label, x + sw + 10 * k, base, cardDim);
         return x + sw + 10 * k + cardDim.measureText(label);
     }
@@ -1707,7 +1740,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      */
     private String drawerCardsKey() {
         return data.weatherAt + "|" + Prefs.version + "|" + Ui.language + "|"
-                + Float.floatToIntBits(dark()) + "|" + System.currentTimeMillis() / 60_000;
+                + Float.floatToIntBits(dark()) + "|" + Float.floatToIntBits(clearLook()) + "|" + System.currentTimeMillis() / 60_000;
     }
 
     /**
@@ -1897,7 +1930,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private String footballKey() {
         return football.fetchedAt + "|" + Prefs.version + "|" + Ui.language + "|" + Float.floatToIntBits(dark()) + "|"
-                + System.currentTimeMillis() / 60_000 + "|" + footballRowCount + "|" + footballWide;
+                + Float.floatToIntBits(clearLook()) + "|" + System.currentTimeMillis() / 60_000 + "|" + footballRowCount + "|" + footballWide;
     }
 
     private void drawFootballCard(Canvas c, RectF r, boolean wide) {
@@ -1943,20 +1976,20 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             c.drawText(fbWhen, t.left + 24 * k, t.top + (footballWide ? 90 : 82) * k, fbTeamSub);
         }
         // The same paints as the drawer's cards; set here too, since beside the clock the drawer may not have drawn yet.
-        cardTitle.setColor(tone(L_DIM, 0xB3FFFFFF));
-        cardDim.setColor(tone(L_DIM, 0xADFFFFFF));
-        cardDimRight.setColor(tone(L_FAINT, 0x99FFFFFF));
+        cardTitle.setColor(ink(L_DIM, 0xB3FFFFFF, 0xEBFFFFFF));
+        cardDim.setColor(ink(L_DIM, 0xADFFFFFF, 0xEBFFFFFF));
+        cardDimRight.setColor(ink(L_FAINT, 0x99FFFFFF, 0xD9FFFFFF));
         if (footballWide) c.drawText(Ui.tr("Today"), x, footballListTop - 20 * k, cardTitle);
         fbRow.setColor(drawerInk(0.95f));
-        fbRowTime.setColor(tone(L_DIM, 0xADFFFFFF));
-        fbRowRight.setColor(tone(L_FAINT, 0x99FFFFFF));
+        fbRowTime.setColor(ink(L_DIM, 0xADFFFFFF, 0xEBFFFFFF));
+        fbRowRight.setColor(ink(L_FAINT, 0x99FFFFFF, 0xD9FFFFFF));
         if (footballGames.length == 0 && !FootballRules.teamPlaysToday(f, System.currentTimeMillis())) {
             c.drawText(Ui.tr("No games today"), x, footballListTop + 32 * k, cardDim);
         }
         for (int i = 0; i < footballShown; i++) {
             RectF row = footballRows[1 + i];
             float base = row.centerY() + Ui.halfCap(fbRow);
-            fbRowTime.setColor(fbLive[i] ? tone(0xFFD70015, DOWN_COLOR) : tone(L_DIM, 0xADFFFFFF));
+            fbRowTime.setColor(fbLive[i] ? tone(0xFFD70015, DOWN_COLOR) : ink(L_DIM, 0xADFFFFFF, 0xEBFFFFFF));
             c.drawText(fbTime[i], x, base, fbRowTime);
             if (!fbChannels[i].isEmpty()) c.drawText(fbChannels[i], right, base, fbRowRight);
             c.drawText(fbTeams[i], x + 104 * k, base, fbRow);
@@ -3019,6 +3052,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (Recs.Pick p : recs.wanted()) recs.backdrop(p);   // all three tabs preloaded: switching tabs is instant
         Backdrop b = cards.isEmpty() ? photoBackdrop() : recs.backdrop(cards.get(0));
         if (cards.isEmpty() || b != null) showBackdrop(b);
+        // The credit follows the photo on screen (Backgrounds publishes the image a moment before its Photo).
+        if (isPhoto(bgTo) && bgTo == backgrounds.current()) {
+            Backgrounds.Photo p = backgrounds.currentPhoto();
+            if (p != null && p != shownPhoto) {
+                shownPhoto = p;
+                platter.invalidate();
+            }
+        }
         heroDirty = true;
         spoken.focusMoved();    // new picks under the focused card
     }
@@ -3270,7 +3311,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             tmp.offset(0, (6 + 8 * f) * k);
             shadow.setColor(Ui.alpha(0xFF000000, tone(0.1f, 0.3f) + tone(0.14f, 0.2f) * f));
             shadows.draw(c, tmp, rad, SHADOW_BLUR * k, shadow);
-            float clear = photo * (1 - night);
+            float clear = clearLook();
             fadedLiquid(c, cell, rad, tone(0xFFFFFFFF, SMOKE), tone(0.55f, 0.5f), tone(0.02f, 0.01f), 12 * k, 8 * k,
                     tone(0.6f, 0.45f), 1 - f, 1 - clear);
             scene.clear(c, cell, rad, 0.16f * clear * (1 - f), clear * (1 - f));

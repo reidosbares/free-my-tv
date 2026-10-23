@@ -210,7 +210,7 @@ final class Backgrounds {
         while (bounds.outWidth / (opts.inSampleSize * 2) >= Backdrop.W) opts.inSampleSize *= 2;
         Bitmap b = BitmapFactory.decodeFile(f.getPath(), opts);
         if (b == null) throw new IOException();
-        return Backdrop.make(b, false);
+        return Backdrop.photo(b);
     }
 
     /** current.jpg couldn't be decoded: unreadable, it goes (out of memory, it stays for current() to try again). */

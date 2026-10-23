@@ -117,6 +117,36 @@ final class Backdrop {
         return new Backdrop(gpu(out), frost, glass, null, null, null, null, null, null);
     }
 
+    /**
+     * An Unsplash photo for the home screen's photo look: shown sharp, so only the scrims the text needs, the left one
+     * behind the date, clock and weather (stronger on a bright photo) and a light one at the top behind the buttons.
+     * The glass shelf gives its own contrast: no bottom scrim.
+     */
+    static Backdrop photo(Bitmap src) {
+        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
+        if (src.getWidth() == W && src.getHeight() == H) {
+            c.drawBitmap(src, 0, 0, null);   // already the screen's size: pixel for pixel
+        } else {
+            float scale = Math.max((float) W / src.getWidth(), (float) H / src.getHeight());
+            float sw = src.getWidth() * scale, sh = src.getHeight() * scale;
+            c.drawBitmap(src, null, new RectF((W - sw) / 2, (H - sh) / 2, (W + sw) / 2, (H + sh) / 2), paint);
+        }
+        src.recycle();
+        float boost = Math.max(0, Math.min(0.3f, (luminance(out, 0, 0.22f, 0.5f, 0.62f) - 0.22f) * 1.1f));
+        Paint scrim = new Paint(Paint.DITHER_FLAG);
+        scrim.setShader(new LinearGradient(0, 0, W * 0.68f, 0,
+                new int[] {black(0.66f + boost), black(0.52f + boost * 0.8f), black(0.26f + boost * 0.4f), black(0.07f), 0},
+                new float[] {0, 0.25f, 0.55f, 0.8f, 1}, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, W, H, scrim);
+        scrim.setShader(new LinearGradient(0, 0, 0, H * 0.2f, black(0.22f), 0, Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, W, H * 0.2f, scrim);
+        int[] frost = reduce(out, FW, FH, 3, 3);
+        int[] glass = reduce(out, GW, GH, 2, 2);
+        return new Backdrop(gpu(out), frost, glass, null, null, null, null, null, null);
+    }
+
     /** How many times smaller the screensaver photo's frosted version is (the glass math uses the same number). */
     static final int PHOTO_FROST = 6;
 
