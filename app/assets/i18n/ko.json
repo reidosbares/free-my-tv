@@ -190,6 +190,7 @@
  "the screensaver": "화면 보호기",
  "unexpected reply from ADB": "ADB에서 예상치 못한 응답",
  "unit|Automatic": "자동",
+ "{app} isn't installed on this TV.": "이 TV에 {app}이(가) 설치되어 있지 않습니다.",
  "{h}h {m}m": "{h}시간 {m}분",
  "{i} of {n}": "{n}개 중 {i}번째",
  "{m}m": "{m}분",

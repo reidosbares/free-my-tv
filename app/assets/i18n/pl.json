@@ -190,6 +190,7 @@
  "the screensaver": "wygaszacz",
  "unexpected reply from ADB": "nieoczekiwana odpowiedź ADB",
  "unit|Automatic": "Automatyczna",
+ "{app} isn't installed on this TV.": "{app} nie jest zainstalowana na tym telewizorze.",
  "{h}h {m}m": "{h} godz. {m} min",
  "{i} of {n}": "{i} z {n}",
  "{m}m": "{m} min",

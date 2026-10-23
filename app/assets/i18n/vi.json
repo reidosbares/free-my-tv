@@ -190,6 +190,7 @@
  "the screensaver": "trình bảo vệ màn hình",
  "unexpected reply from ADB": "phản hồi không mong đợi từ ADB",
  "unit|Automatic": "Tự động",
+ "{app} isn't installed on this TV.": "{app} chưa được cài trên TV này.",
  "{h}h {m}m": "{h} giờ {m} phút",
  "{i} of {n}": "{i} trên {n}",
  "{m}m": "{m} phút",

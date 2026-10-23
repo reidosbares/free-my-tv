@@ -190,6 +190,7 @@
  "the screensaver": "pauseskærmen",
  "unexpected reply from ADB": "uventet svar fra ADB",
  "unit|Automatic": "Automatisk",
+ "{app} isn't installed on this TV.": "{app} er ikke installeret på dette tv.",
  "{h}h {m}m": "{h} t {m} min",
  "{i} of {n}": "{i} af {n}",
  "{m}m": "{m} min",

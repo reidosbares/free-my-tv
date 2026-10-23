@@ -190,6 +190,7 @@
  "the screensaver": "näytönsäästäjä",
  "unexpected reply from ADB": "odottamaton vastaus ADB:ltä",
  "unit|Automatic": "Automaattinen",
+ "{app} isn't installed on this TV.": "{app} ei ole asennettuna tähän televisioon.",
  "{h}h {m}m": "{h} h {m} min",
  "{i} of {n}": "{i}/{n}",
  "{m}m": "{m} min",

@@ -190,6 +190,7 @@
  "the screensaver": "スクリーンセーバー",
  "unexpected reply from ADB": "ADB から予期しない応答",
  "unit|Automatic": "自動",
+ "{app} isn't installed on this TV.": "このテレビには{app}がインストールされていません。",
  "{h}h {m}m": "{h}時間{m}分",
  "{i} of {n}": "{n}件中{i}件目",
  "{m}m": "{m}分",

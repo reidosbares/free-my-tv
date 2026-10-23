@@ -190,6 +190,7 @@
  "the screensaver": "the screensaver",
  "unexpected reply from ADB": "unexpected reply from ADB",
  "unit|Automatic": "Automatic",
+ "{app} isn't installed on this TV.": "{app} isn't installed on this TV.",
  "{h}h {m}m": "{h}h {m}m",
  "{i} of {n}": "{i} of {n}",
  "{m}m": "{m}m",

@@ -190,6 +190,7 @@
  "the screensaver": "skjermspareren",
  "unexpected reply from ADB": "uventet svar fra ADB",
  "unit|Automatic": "Automatisk",
+ "{app} isn't installed on this TV.": "{app} er ikke installert på denne TV-en.",
  "{h}h {m}m": "{h} t {m} min",
  "{i} of {n}": "{i} av {n}",
  "{m}m": "{m} min",

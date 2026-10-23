@@ -190,6 +190,7 @@
  "the screensaver": "屏保",
  "unexpected reply from ADB": "ADB 的回复异常",
  "unit|Automatic": "自动",
+ "{app} isn't installed on this TV.": "此电视未安装 {app}。",
  "{h}h {m}m": "{h} 小时 {m} 分钟",
  "{i} of {n}": "第 {i} 项，共 {n} 项",
  "{m}m": "{m} 分钟",

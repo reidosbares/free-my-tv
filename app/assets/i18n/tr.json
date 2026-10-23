@@ -190,6 +190,7 @@
  "the screensaver": "ekran koruyucu",
  "unexpected reply from ADB": "ADB'den beklenmeyen yanıt",
  "unit|Automatic": "Otomatik",
+ "{app} isn't installed on this TV.": "{app} bu televizyonda yüklü değil.",
  "{h}h {m}m": "{h} sa {m} dk",
  "{i} of {n}": "{i}/{n}",
  "{m}m": "{m} dk",

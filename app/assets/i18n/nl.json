@@ -190,6 +190,7 @@
  "the screensaver": "de schermbeveiliging",
  "unexpected reply from ADB": "onverwacht antwoord van ADB",
  "unit|Automatic": "Automatisch",
+ "{app} isn't installed on this TV.": "{app} is niet geïnstalleerd op deze tv.",
  "{h}h {m}m": "{h} u {m} min",
  "{i} of {n}": "{i} van {n}",
  "{m}m": "{m} min",

@@ -190,6 +190,7 @@
  "the screensaver": "η προφύλαξη οθόνης",
  "unexpected reply from ADB": "απρόσμενη απάντηση από το ADB",
  "unit|Automatic": "Αυτόματο",
+ "{app} isn't installed on this TV.": "Το {app} δεν είναι εγκατεστημένο σε αυτή την τηλεόραση.",
  "{h}h {m}m": "{h} ώ {m} λ",
  "{i} of {n}": "{i} από {n}",
  "{m}m": "{m} λ",

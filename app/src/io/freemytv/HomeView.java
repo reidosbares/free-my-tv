@@ -39,8 +39,10 @@ import org.json.JSONObject;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -103,6 +105,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static int tabsGeneration = -1;
     private static final String[] TAB_KIND = {null, "movie", "tv"};
     private static final int Z_TOP = 4, Z_CARDS = 5;
+    // The football card's rows (team card = 0, games from 1), beside the clock or in the drawer.
+    private static final int Z_FOOTBALL = 7;
 
     private final Activity activity;
     private final Scene scene = new Scene();
@@ -212,7 +216,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // Football card (in the drawer, or beside the clock): [0] is the team's card, then one rect per game row drawn.
     private final RectF footballCard = new RectF();
     private final RectF[] footballRows = new RectF[9];
-    private int footballRowCount, footballMore;
+    private int footballRowCount, footballMore, footballShown, footballFirst, footballIndex;
+    private final Spring[] footballFocus = new Spring[9];
     private float footballListTop, footballMoreBase;
     private boolean footballWide;
     private FootballRules.Game[] footballGames = new FootballRules.Game[0];
@@ -411,7 +416,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             cardFocus[i] = new Spring(0.32f, 0.78f, 0);
             cardRects[i] = new RectF();
         }
-        for (int i = 0; i < footballRows.length; i++) footballRows[i] = new RectF();
+        for (int i = 0; i < footballRows.length; i++) {
+            footballRows[i] = new RectF();
+            footballFocus[i] = new Spring(0.32f, 0.78f, 0);
+        }
         setLightButtons(HomeApps.topButtons());
         recs.setLight(true);
         checkNight(false);
@@ -698,6 +706,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (topMoving) status.invalidate();
         heroMoving |= topMoving | cardsMoving;
         boolean drawerItemsMoving = step(drawerFocus, dt);
+        boolean footballMoving = step(footballFocus, dt);
+        if (footballMoving) {
+            if (footballPlacement().equals("home")) heroMoving = true;
+            else drawerItemsMoving = true;
+        }
         boolean gridMoving = step(gridFocus, dt) | scroll.step(dt);
         boolean drawerMoving = drawer.step(dt);
         boolean sheetMoving = sheet.step(dt);
@@ -1765,6 +1778,54 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return FootballRules.effectivePlacement(Prefs.football(), picksOn());
     }
 
+    private boolean footballFocusable() {
+        return !footballPlacement().equals("off") && footballRowCount > 0;
+    }
+
+    /** The game on a focusable row: 0 is the team's next match, then today's games. */
+    private FootballRules.Game footballGameAt(int row) {
+        FootballRules.Feed f = football.feed;
+        if (f == null) return null;
+        if (row == 0) return f.next;
+        return row - 1 < footballGames.length ? footballGames[row - 1] : null;
+    }
+
+    /** OK on a row: the app of its first channel that is on this TV, or a note saying the app isn't installed. */
+    private void openFootballGame() {
+        FootballRules.Game g = footballGameAt(footballIndex);
+        if (g == null) return;
+        PackageManager pm = getContext().getPackageManager();
+        Set<String> installed = new HashSet<>();
+        for (String[] row : FootballRules.CHANNEL_APPS) if (HomeApps.launchIntent(pm, row[1]) != null) installed.add(row[1]);
+        String pkg = FootballRules.appFor(g.channels, installed);
+        if (pkg == null) {
+            String name = FootballRules.firstKnownApp(g.channels);
+            if (name != null) showToast(Ui.trf("{app} isn't installed on this TV.", "app", name));
+            return;
+        }
+        String label = g.channels.length > 0 ? g.channels[0].name : pkg;
+        for (FootballRules.Channel ch : g.channels) if (pkg.equals(FootballRules.appFor(new FootballRules.Channel[] {ch}, installed))) {
+            label = ch.name;
+            break;
+        }
+        click.open();
+        RectF r = footballRows[footballIndex];
+        HomeApps.Item it = HomeApps.app(pkg, label);
+        if (!HomeApps.open(activity, it, this, Math.round(r.left), Math.round(r.top), Math.round(r.width()), Math.round(r.height()))) {
+            showToast(Ui.trf("Couldn't open {app}.", "app", label));
+        }
+    }
+
+    /** What TalkBack reads for a row: "Flamengo x Atlético-MG, seg 26/10 · 20:00, sportv · Premiere". */
+    private String footballText(int row) {
+        FootballRules.Game g = footballGameAt(row);
+        if (g == null) return "";
+        String when = g.hasScore() && !"scheduled".equals(g.status) ? g.homeScore + " x " + g.awayScore
+                : row == 0 ? Ui.datePattern("format|EEE d/M · HH:mm").format(g.kickoffMs) : Ui.time(g.kickoffMs);
+        String chs = channelList(g);
+        return fixture(g) + ", " + when + (chs.isEmpty() ? "" : ", " + chs);
+    }
+
     /** Today's games without the team's own (it's on the team card already). */
     private static FootballRules.Game[] listedGames(FootballRules.Feed f) {
         if (f.next == null) return f.today;
@@ -1793,7 +1854,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             float y = footballListTop + i * rowH;
             footballRows[1 + i].set(r.left + pad - 10 * k, y, r.right - pad + 10 * k, y + rowH);
         }
-        footballRowCount = f != null && f.next != null ? 1 + shown : shown;
+        footballShown = shown;
+        footballFirst = f != null && f.next != null ? 0 : 1;
+        footballRowCount = shown + 1 - footballFirst;
+        footballIndex = Math.max(footballFirst, Math.min(footballShown, footballIndex));
         footballMoreBase = footballListTop + shown * rowH + rowH * 0.66f;
         fbTextAt = -1;   // the rows changed: make the text again
     }
@@ -1865,6 +1929,22 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void drawFootballCard(Canvas c, RectF r, boolean wide) {
         drawerCard(c, r);
+        // The focused row, under the text (so the legacy snapshot of the text stays valid while focus moves).
+        for (int i = footballFirst; i <= footballShown; i++) {
+            float f = Ui.clamp(footballFocus[i].value);
+            if (f < 0.01f) continue;
+            RectF row = footballRows[i];
+            if (i == 0) {
+                tmp.set(row);
+                tmp.inset(-5 * k, -5 * k);
+                rim.setColor(Ui.alpha(drawerInk(1), f));
+                c.drawRoundRect(tmp, 22 * k, 22 * k, rim);
+            } else {
+                fill.setShader(null);
+                fill.setColor(Ui.alpha(tone(0xFFFFFFFF, 0x33FFFFFF), f));
+                c.drawRoundRect(row, 14 * k, 14 * k, fill);
+            }
+        }
         if (Ui.LEGACY) footballSnapshot.draw(c, r, footballKey(), cc -> drawFootball(cc, r));
         else drawFootball(c, r);
     }
@@ -1897,11 +1977,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         fbRow.setColor(drawerInk(0.95f));
         fbRowTime.setColor(tone(L_DIM, 0xADFFFFFF));
         fbRowRight.setColor(tone(L_FAINT, 0x99FFFFFF));
-        int first = f.next != null ? 1 : 0;
         if (footballGames.length == 0) {
             c.drawText(Ui.tr("No games today"), x, footballListTop + 32 * k, cardDim);
         }
-        for (int i = 0; i < footballRowCount - first; i++) {
+        for (int i = 0; i < footballShown; i++) {
             RectF row = footballRows[1 + i];
             float base = row.centerY() + Ui.halfCap(fbRow);
             fbRowTime.setColor(fbLive[i] ? tone(0xFFD70015, DOWN_COLOR) : tone(L_DIM, 0xADFFFFFF));
@@ -1921,6 +2000,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         boolean tilesChanged = aim(tileFocus, !sheetOpen && zone == Z_SHELF ? shelfIndex : -1, snap);
         boolean statusChanged = aim(statusFocus, !sheetOpen && zone == Z_STATUS ? statusIndex : -1, snap);
         boolean drawerChanged = aim(drawerFocus, !sheetOpen && zone == Z_DRAWER ? drawerIndex : -1, snap);
+        boolean footballChanged = aim(footballFocus, !sheetOpen && zone == Z_FOOTBALL ? footballIndex : -1, snap);
+        if (footballChanged) {
+            heroDirty = true;
+            drawerChanged = true;
+        }
         boolean heroChanged = heroFocus.target != (!sheetOpen && zone == Z_HERO ? 1 : 0);
         heroFocus.target = !sheetOpen && zone == Z_HERO ? 1 : 0;
         if (snap) heroFocus.snap(heroFocus.target);
@@ -2254,7 +2338,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void back() {
         if (sheetOpen) {
             closeSheet();
-        } else if (zone == Z_DRAWER || zone == WIDGETS) {
+        } else if (zone == Z_DRAWER || zone == WIDGETS || (zone == Z_FOOTBALL && drawerOpen)) {
             closeDrawer();
             retarget(false);
         } else if (zone != Z_SHELF) {
@@ -2338,6 +2422,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     drawerIndex = next;
                 } else if (dy < 0) {
                     closeDrawer();
+                } else if (footballPlacement().equals("drawer") && footballFocusable()) {
+                    zone = Z_FOOTBALL;
+                    footballIndex = footballFirst;
                 } else if (talkBack() && !widgets().isEmpty()) {
                     // Only with TalkBack: the widgets are there to be read, and this is how it gets to them.
                     zone = WIDGETS;
@@ -2393,6 +2480,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         HomeApps.Item it;
         RectF r;
         if (!sheetOpen && zone == WIDGETS) return;   // a widget is only read
+        if (!sheetOpen && zone == Z_FOOTBALL) {
+            openFootballGame();
+            return;
+        }
         if (sheetOpen) {
             if (others.isEmpty()) return;
             it = others.get(gridIndex);
@@ -2704,7 +2795,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (int i = 0; i < shelf.size(); i++) out.add(a11yId(Z_SHELF, i));
         for (int i = 0; i < drawerItems.size(); i++) out.add(a11yId(Z_DRAWER, i));
         if (drawerOpen && Prefs.weather()) out.add(a11yId(WIDGETS, 0));
-        if (drawerOpen && Prefs.quotes() && HomeData.active().length > 0) out.add(a11yId(WIDGETS, 1));
+        String fb = footballPlacement();
+        if (drawerOpen && !fb.equals("drawer") && Prefs.quotes() && HomeData.active().length > 0) out.add(a11yId(WIDGETS, 1));
+        if (footballFocusable() && (fb.equals("home") || drawerOpen)) {
+            for (int i = footballFirst; i <= footballShown; i++) out.add(a11yId(Z_FOOTBALL, i));
+        }
     }
 
     private String a11yText(int id) {
@@ -2725,6 +2820,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 return label(shelf, i);
             case Z_DRAWER: return label(drawerItems, i);
             case WIDGETS: return i == 0 ? weatherText() : quotesText();
+            case Z_FOOTBALL: return footballText(i);
             default: return "";
         }
     }
@@ -2771,6 +2867,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 a11yRect.set(i == 0 ? weatherCard : quotesCard);
                 dy = 0;
                 break;
+            case Z_FOOTBALL:
+                if (i < footballFirst || i > footballShown) return false;
+                a11yRect.set(footballRows[i]);
+                dy = footballPlacement().equals("home") ? heroLayer.getTranslationY() : drawerOpen ? 0 : h;
+                break;
             default:
                 return false;
         }
@@ -2790,6 +2891,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             case Z_SHELF: return shelf.isEmpty() ? -1 : a11yId(Z_SHELF, shelfIndex);
             case Z_DRAWER: return drawerItems.isEmpty() ? -1 : a11yId(Z_DRAWER, drawerIndex);
             case WIDGETS: return a11yId(WIDGETS, widgetIndex);
+            case Z_FOOTBALL: return a11yId(Z_FOOTBALL, footballIndex);
             default: return -1;
         }
     }
@@ -2799,7 +2901,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         List<Integer> out = new ArrayList<>();
         if (!drawerOpen) return out;
         if (Prefs.weather()) out.add(0);
-        if (Prefs.quotes() && HomeData.active().length > 0) out.add(1);
+        if (!footballPlacement().equals("drawer") && Prefs.quotes() && HomeData.active().length > 0) out.add(1);
         return out;
     }
 
@@ -2832,6 +2934,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             case WIDGETS:
                 if (!widgets().contains(i)) return;
                 widgetIndex = i;
+                break;
+            case Z_FOOTBALL:
+                if (!footballFocusable() || i < footballFirst || i > footballShown) return;
+                if (footballPlacement().equals("drawer") && !drawerOpen) openDrawer();
+                if (footballPlacement().equals("home") && drawerOpen) closeDrawer();
+                footballIndex = i;
                 break;
             case Z_TOP:
                 if (i >= 3 + lightButtons.size() || (i < 3 && !picksOn())) return;
@@ -3174,7 +3282,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             case Z_SHELF:
                 // Up from an empty shelf too: move()'s older zones (the hero, the corner capsule) aren't drawn any more.
                 if (dy >= 0) return false;
-                if (cards.isEmpty()) {
+                if (cards.isEmpty() && footballPlacement().equals("home") && footballFocusable()) {
+                    zone = Z_FOOTBALL;
+                    footballIndex = footballShown;   // from below: the bottom row
+                } else if (cards.isEmpty()) {
                     if (!picksOn() && lightButtons.isEmpty()) return true;   // no tabs and no buttons above
                     zone = Z_TOP;
                     topIndex = picksOn() ? tab : 3;
@@ -3203,7 +3314,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     topIndex = next;
                     if (topIndex < 3) selectTab(topIndex);   // like Apple TV tabs: focusing a tab selects it
                 } else if (dy > 0) {
-                    if (cards.isEmpty()) {
+                    if (cards.isEmpty() && footballPlacement().equals("home") && footballFocusable()) {
+                        zone = Z_FOOTBALL;
+                        footballIndex = footballFirst;   // from above: the team card
+                    } else if (cards.isEmpty()) {
                         zone = Z_SHELF;
                     } else {
                         zone = Z_CARDS;
@@ -3215,6 +3329,23 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     return true;
                 }
                 break;
+            case Z_FOOTBALL: {
+                boolean home = footballPlacement().equals("home");
+                if (dx != 0) return true;
+                if (dy < 0) {
+                    if (footballIndex > footballFirst) footballIndex--;
+                    else if (!home) zone = Z_DRAWER;
+                    else if (!lightButtons.isEmpty()) {
+                        zone = Z_TOP;
+                        topIndex = 3;
+                    } else return true;
+                } else {
+                    if (footballIndex < footballShown) footballIndex++;
+                    else if (home) zone = Z_SHELF;
+                    else return true;
+                }
+                break;
+            }
             default:
                 return false;
         }

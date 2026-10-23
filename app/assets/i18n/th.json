@@ -190,6 +190,7 @@
  "the screensaver": "สกรีนเซฟเวอร์",
  "unexpected reply from ADB": "ได้รับการตอบกลับที่ไม่คาดคิดจาก ADB",
  "unit|Automatic": "อัตโนมัติ",
+ "{app} isn't installed on this TV.": "ไม่ได้ติดตั้ง {app} ในทีวีเครื่องนี้",
  "{h}h {m}m": "{h} ชม. {m} นาที",
  "{i} of {n}": "{i} จาก {n}",
  "{m}m": "{m} นาที",

@@ -190,6 +190,7 @@
  "the screensaver": "screensaverul",
  "unexpected reply from ADB": "răspuns neașteptat de la ADB",
  "unit|Automatic": "Automat",
+ "{app} isn't installed on this TV.": "{app} nu este instalată pe acest televizor.",
  "{h}h {m}m": "{h} h {m} min",
  "{i} of {n}": "{i} din {n}",
  "{m}m": "{m} min",

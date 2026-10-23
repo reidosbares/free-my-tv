@@ -190,6 +190,7 @@
  "the screensaver": "заставка",
  "unexpected reply from ADB": "неочікувана відповідь ADB",
  "unit|Automatic": "Автоматично",
+ "{app} isn't installed on this TV.": "{app} не встановлено на цьому телевізорі.",
  "{h}h {m}m": "{h} год {m} хв",
  "{i} of {n}": "{i} з {n}",
  "{m}m": "{m} хв",

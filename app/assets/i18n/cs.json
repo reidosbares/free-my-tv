@@ -190,6 +190,7 @@
  "the screensaver": "spořič obrazovky",
  "unexpected reply from ADB": "neočekávaná odpověď ADB",
  "unit|Automatic": "Automaticky",
+ "{app} isn't installed on this TV.": "{app} není na této televizi nainstalováno.",
  "{h}h {m}m": "{h} h {m} min",
  "{i} of {n}": "{i} z {n}",
  "{m}m": "{m} min",

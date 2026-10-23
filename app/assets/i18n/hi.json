@@ -190,6 +190,7 @@
  "the screensaver": "स्क्रीनसेवर",
  "unexpected reply from ADB": "ADB से अनपेक्षित जवाब",
  "unit|Automatic": "अपने-आप",
+ "{app} isn't installed on this TV.": "इस टीवी पर {app} इंस्टॉल नहीं है।",
  "{h}h {m}m": "{h} घं {m} मि",
  "{i} of {n}": "{n} में से {i}",
  "{m}m": "{m} मि",

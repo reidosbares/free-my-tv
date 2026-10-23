@@ -190,6 +190,7 @@
  "the screensaver": "den Bildschirmschoner",
  "unexpected reply from ADB": "unerwartete Antwort von ADB",
  "unit|Automatic": "Automatisch",
+ "{app} isn't installed on this TV.": "{app} ist auf diesem Fernseher nicht installiert.",
  "{h}h {m}m": "{h} h {m} min",
  "{i} of {n}": "{i} von {n}",
  "{m}m": "{m} min",

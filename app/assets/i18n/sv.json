@@ -190,6 +190,7 @@
  "the screensaver": "skärmsläckaren",
  "unexpected reply from ADB": "oväntat svar från ADB",
  "unit|Automatic": "Automatiskt",
+ "{app} isn't installed on this TV.": "{app} är inte installerad på den här tv:n.",
  "{h}h {m}m": "{h} h {m} min",
  "{i} of {n}": "{i} av {n}",
  "{m}m": "{m} min",

@@ -190,6 +190,7 @@
  "the screensaver": "a tela de descanso",
  "unexpected reply from ADB": "resposta inesperada do ADB",
  "unit|Automatic": "Automática",
+ "{app} isn't installed on this TV.": "{app} não está instalado nesta TV.",
  "{h}h {m}m": "{h} h {m} min",
  "{i} of {n}": "{i} de {n}",
  "{m}m": "{m} min",

@@ -190,6 +190,7 @@
  "the screensaver": "l'économiseur d'écran",
  "unexpected reply from ADB": "réponse inattendue d'ADB",
  "unit|Automatic": "Automatique",
+ "{app} isn't installed on this TV.": "{app} n'est pas installé sur ce téléviseur.",
  "{h}h {m}m": "{h} h {m} min",
  "{i} of {n}": "{i} sur {n}",
  "{m}m": "{m} min",

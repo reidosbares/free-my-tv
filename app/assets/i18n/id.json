@@ -190,6 +190,7 @@
  "the screensaver": "screensaver",
  "unexpected reply from ADB": "balasan tak terduga dari ADB",
  "unit|Automatic": "Otomatis",
+ "{app} isn't installed on this TV.": "{app} tidak terpasang di TV ini.",
  "{h}h {m}m": "{h} j {m} mnt",
  "{i} of {n}": "{i} dari {n}",
  "{m}m": "{m} mnt",
