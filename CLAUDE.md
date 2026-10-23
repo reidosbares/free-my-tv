@@ -8,7 +8,7 @@ The website (freemytv.io) is in `docs/`: static HTML, CSS and JS, no build step.
 publishes it to GitHub Pages (`.github/workflows/pages.yml`). `docs/index.html` (English) and `docs/pt/index.html`
 (Brazilian Portuguese) are the same page in two languages, so change both; visitors from Brazil land on the
 Portuguese one by themselves, and the PT/EN switch in the menu is remembered.
-Before you push, run `tools/check.sh`: the Google TV build, `translate.py --check`, the LG and Samsung packages and
+Before you push, run `tools/check.sh`: the Google TV build, `translate.py --check` and
 ES5 in `web/` (syntax and the newer calls old TVs lack). Every pull request runs it too (`.github/workflows/check.yml`).
 
 The person you're helping may not be technical. Keep it short and friendly, say what you're about to do on their TV

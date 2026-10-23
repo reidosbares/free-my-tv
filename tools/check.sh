@@ -3,7 +3,7 @@
 #
 #   tools/check.sh           # everything
 #   tools/check.sh android   # only the Google TV build and its JVM tests (needs what build.sh needs)
-#   tools/check.sh web       # translations, the LG and Samsung packages, and ES5 (needs Python 3 and Node)
+#   tools/check.sh web       # translations and ES5 in web/ (needs Python 3 and Node)
 #
 # One difference: here ./build.sh uses the newest SDK and JDK you have, while CI uses build-tools 34, android-34 and
 # JDK 17, as the README says. A call newer than Android 34 can pass here and fail on the pull request.
@@ -23,14 +23,7 @@ fi
 if [ "$what" = all ] || [ "$what" = web ]; then
   python3 tools/translate.py --check
 
-  # The generic LG and Samsung packages land where your own build leaves yours (with your city and TMDB key):
-  # keep yours and put them back afterwards, so the next install isn't the generic one.
-  packages="FreeMyTV-webos.ipk FreeMyTV-tizen.wgt"
-  kept="$(mktemp -d)"
-  for p in $packages; do if [ -f "$p" ]; then cp "$p" "$kept/"; fi; done
-  trap 'for p in $packages; do if [ -f "$kept/$p" ]; then mv "$kept/$p" "$p"; else rm -f "$p"; fi; done; rm -rf "$kept"' EXIT
-  python3 webos/build.py --generic
-  python3 tizen/build.py --generic
+  # No LG or Samsung packages: this fork's builds dropped the crypto coins their packages need (app/res/drawable).
 
   # webOS 3 and Tizen 3 run a Chromium from 2015 to 2017: web/ has to be ES5, in syntax...
   for f in web/*.js; do npx --yes acorn@8.14.0 --ecma5 --silent "$f"; done

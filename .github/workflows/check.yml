@@ -36,7 +36,7 @@ jobs:
       - run: tools/check.sh android
 
   web:
-    name: Translations, LG and Samsung
+    name: Translations and web/ ES5
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
