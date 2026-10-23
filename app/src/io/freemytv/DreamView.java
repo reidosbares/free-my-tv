@@ -50,7 +50,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     // The high and low and the football line, made again only when they change (drawn on every frame).
     private String range = "", footballLine = "";
     private HomeData.Weather rangeWeather;
-    private int rangeGeneration = -1, rangePrefs = -1, footballGeneration = -1;
+    private int rangeGeneration = -1, rangePrefs = -1, footballGeneration = -1, footballPrefs = -1;
     private long footballAt = -1, footballMinute = -1;
 
     /** One photo on screen: the image, its motion (zooming in or out, toward a corner) and its caption. */
@@ -770,16 +770,18 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         FootballRules.Feed f = football.feed;
         long now = System.currentTimeMillis(), minute = now / 60_000;
         if (!FootballData.enabled() || f == null) return "";
-        if (football.fetchedAt == footballAt && minute == footballMinute && Ui.generation == footballGeneration) return footballLine;
+        if (football.fetchedAt == footballAt && minute == footballMinute && Ui.generation == footballGeneration
+                && Prefs.version == footballPrefs) return footballLine;
         footballAt = football.fetchedAt;
         footballMinute = minute;
         footballGeneration = Ui.generation;
-        FootballRules.Game g = FootballRules.nextToday(f.today, now);
+        footballPrefs = Prefs.version;
+        FootballRules.Game g = FootballRules.screensaverGame(f, Prefs.football(), now);
         if (g == null) return footballLine = "";
         String channel = g.channels.length > 0 ? " · " + g.channels[0].name : "";
-        footballLine = g.live() && g.hasScore()
+        footballLine = g.liveAt(now) && g.hasScore()
                 ? g.home.name + " " + g.homeScore + " x " + g.awayScore + " " + g.away.name + channel
-                : Ui.time(g.kickoffMs) + "  " + g.home.name + " x " + g.away.name + channel;
+                : (g.timeKnown ? Ui.time(g.kickoffMs) + "  " : "") + g.home.name + " x " + g.away.name + channel;
         return footballLine;
     }
 }

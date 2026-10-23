@@ -70,23 +70,23 @@ final class FootballData {
     void addListener(HomeData.Listener l) { if (!listeners.contains(l)) listeners.add(l); }
     void removeListener(HomeData.Listener l) { listeners.remove(l); }
 
-    private boolean anyLive() {
+    private boolean anyLive(long now) {
         FootballRules.Feed f = feed;
         if (f == null) return false;
-        if (f.next != null && f.next.live()) return true;
-        for (FootballRules.Game g : f.today) if (g.live()) return true;
+        if (f.next != null && f.next.liveAt(now)) return true;
+        for (FootballRules.Game g : f.today) if (g.liveAt(now)) return true;
         return false;
     }
 
     /** Fetches when the data is older than 5 minutes (1 while a game is live). Called with HomeData's. */
     void refreshIfStale() {
-        if (!enabled() || fetching) return;
+        if (!enabled()) return;
         long now = System.currentTimeMillis();
-        long every = anyLive() ? LIVE_EVERY : EVERY;
-        if (now - fetchedAt < every && now >= fetchedAt) {
-            retrim(now);
-            return;
-        }
+        // First, whatever happens next: with the service down overnight, yesterday's games must still go away.
+        retrim(now);
+        if (fetching) return;
+        long every = anyLive(now) ? LIVE_EVERY : EVERY;
+        if (now - fetchedAt < every && now >= fetchedAt) return;
         if (failedAt != 0 && now >= failedAt && now - failedAt < RETRY) return;
         fetching = true;
         io.execute(() -> {
@@ -147,6 +147,7 @@ final class FootballData {
         g.kickoffMs = time(o.getString("kickoff"));
         g.competition = o.optString("competition");
         g.status = o.optString("status", "scheduled");
+        g.timeKnown = o.optBoolean("timeKnown", true);
         JSONObject h = o.getJSONObject("home"), a = o.getJSONObject("away");
         g.home.name = h.optString("name");
         g.home.crest = h.optString("crest");

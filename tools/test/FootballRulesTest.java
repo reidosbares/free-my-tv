@@ -96,6 +96,25 @@ public final class FootballRulesTest {
         check(nextToday(games(late), brt(2026, 10, 24, 19, 0)) == late, "kicked off but not yet live in the feed: still shown");
         check(nextToday(games(late), brt(2026, 10, 24, 21, 0)) == null, "more than 2 h past kickoff: gone");
 
+        // Stale data: a game "live" long after kickoff isn't live any more (the service died during it).
+        Game stuck = at(2026, 10, 24, 21, 30, "live");
+        check(todayOnly(games(stuck), brt(2026, 10, 25, 18, 0)).length == 0, "stale live game from yesterday dropped");
+        check(todayOnly(games(at(2026, 10, 24, 12, 0, "live")), brt(2026, 10, 24, 17, 0)).length == 1, "same day stays listed");
+        check(nextToday(games(at(2026, 10, 24, 12, 0, "live")), brt(2026, 10, 24, 17, 0)) == null, "stale live isn't next");
+
+        // The screensaver follows Home Settings' Football row.
+        Feed sf = new Feed();
+        sf.today = games(next1830);
+        check(screensaverGame(sf, "off", brt(2026, 10, 24, 17, 0)) == null, "football off: no screensaver line");
+        check(screensaverGame(sf, "drawer", brt(2026, 10, 24, 17, 0)) == next1830, "drawer: line shown");
+        check(screensaverGame(null, "home", 0) == null, "no feed: no line");
+
+        // "No games today" isn't true when the team itself plays today.
+        Feed tf = new Feed();
+        tf.next = at(2026, 10, 24, 20, 0, "scheduled");
+        check(teamPlaysToday(tf, brt(2026, 10, 24, 9, 0)), "team plays today");
+        check(!teamPlaysToday(tf, brt(2026, 10, 23, 9, 0)) && !teamPlaysToday(new Feed(), 0), "not today, or no next");
+
         if (failures > 0) {
             System.out.println(failures + " check(s) failed");
             System.exit(1);

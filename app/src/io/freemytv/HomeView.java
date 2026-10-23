@@ -538,6 +538,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         wake();
         layoutDrawer();   // the football card may have appeared, gone, or changed its row count
         layoutHomeFootball();
+        if (zone == Z_FOOTBALL && !footballFocusable()) {
+            // The card went away under the focus: back to where the person came from.
+            zone = drawerOpen ? Z_DRAWER : Z_SHELF;
+            retarget(false);
+        } else if (zone == Z_FOOTBALL) {
+            retarget(false);   // the rows may have changed: aim the highlight at the clamped row
+        }
         updatePalette();
         checkNight(true);
         layoutStatus();
@@ -1821,6 +1828,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         FootballRules.Game g = footballGameAt(row);
         if (g == null) return "";
         String when = g.hasScore() && !"scheduled".equals(g.status) ? g.homeScore + " x " + g.awayScore
+                : !g.timeKnown ? Ui.datePattern("format|EEE d/M").format(g.kickoffMs) + ", " + Ui.tr("Time to be confirmed")
                 : row == 0 ? Ui.datePattern("format|EEE d/M · HH:mm").format(g.kickoffMs) : Ui.time(g.kickoffMs);
         String chs = channelList(g);
         return fixture(g) + ", " + when + (chs.isEmpty() ? "" : ", " + chs);
@@ -1899,9 +1907,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (f.next != null) {
             fbFixture = fixture(f.next);
             // Short weekday with the date and time: "seg 26/10 · 20:00" (Android's Portuguese writes "seg.": drop that dot).
-            String when = Ui.datePattern("format|EEE d/M · HH:mm").format(f.next.kickoffMs).replaceFirst("^(\\p{L}+)\\.", "$1");
+            String when = (f.next.timeKnown
+                    ? Ui.datePattern("format|EEE d/M · HH:mm").format(f.next.kickoffMs)
+                    : Ui.datePattern("format|EEE d/M").format(f.next.kickoffMs) + " · " + Ui.tr("Time to be confirmed"))
+                    .replaceFirst("^(\\p{L}+)\\.", "$1");
             String chs = channelList(f.next);
-            if (f.next.live() && f.next.hasScore()) when = f.next.homeScore + " x " + f.next.awayScore;
+            if (f.next.liveAt(System.currentTimeMillis()) && f.next.hasScore()) when = f.next.homeScore + " x " + f.next.awayScore;
             fbWhen = chs.isEmpty() ? when + " · " + Ui.tr("Broadcast to be confirmed") : footballWide ? when + " · " + chs : when;
             float room = footballStripes() - 16 * k - (footballRows[0].left + 24 * k);
             fbFixture = fit(fbFixture, fbTeamTitle, room);
@@ -1910,8 +1921,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float tx = footballCard.left + 34 * k + 104 * k, right = footballCard.right - 34 * k;
         for (int i = 0; i < footballGames.length && i < fbTime.length; i++) {
             FootballRules.Game g = footballGames[i];
-            fbLive[i] = g.live();
-            fbTime[i] = g.hasScore() && !"scheduled".equals(g.status) ? g.homeScore + " – " + g.awayScore : Ui.time(g.kickoffMs);
+            fbLive[i] = g.liveAt(System.currentTimeMillis());
+            fbTime[i] = g.hasScore() && !"scheduled".equals(g.status) ? g.homeScore + " – " + g.awayScore
+                    : g.timeKnown ? Ui.time(g.kickoffMs) : "—";
             fbChannels[i] = footballWide ? channelList(g) : "";
             float teamsRight = fbChannels[i].isEmpty() ? right : right - fbRowRight.measureText(fbChannels[i]) - 20 * k;
             fbTeams[i] = fit(fixture(g), fbRow, teamsRight - tx);
@@ -1977,7 +1989,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         fbRow.setColor(drawerInk(0.95f));
         fbRowTime.setColor(tone(L_DIM, 0xADFFFFFF));
         fbRowRight.setColor(tone(L_FAINT, 0x99FFFFFF));
-        if (footballGames.length == 0) {
+        if (footballGames.length == 0 && !FootballRules.teamPlaysToday(f, System.currentTimeMillis())) {
             c.drawText(Ui.tr("No games today"), x, footballListTop + 32 * k, cardDim);
         }
         for (int i = 0; i < footballShown; i++) {

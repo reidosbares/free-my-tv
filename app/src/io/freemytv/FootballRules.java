@@ -27,8 +27,13 @@ final class FootballRules {
         String status = "scheduled";
         int homeScore = -1, awayScore = -1;
         Channel[] channels = new Channel[0];
+        /** False while ge has the date but not the time (kickoffMs is then midnight). */
+        boolean timeKnown = true;
 
         boolean live() { return "live".equals(status); }
+
+        /** Live by the feed, and not so long after kickoff that the feed is just stale (the service died during it). */
+        boolean liveAt(long nowMs) { return live() && nowMs - kickoffMs < LIVE_AT_MOST; }
         boolean hasScore() { return homeScore >= 0 && awayScore >= 0; }
     }
 
@@ -97,6 +102,8 @@ final class FootballRules {
     }
 
     private static final TimeZone BRT = TimeZone.getTimeZone("GMT-03:00");
+    /** The same limit as the service's: past it, a "live" game is old data, not a game in progress. */
+    static final long LIVE_AT_MOST = 4 * 3_600_000L;
 
     private static int dayOf(long ms) {
         Calendar c = Calendar.getInstance(BRT);
@@ -109,7 +116,7 @@ final class FootballRules {
         if (games == null) return new Game[0];
         int today = dayOf(nowMs);
         List<Game> out = new ArrayList<>();
-        for (Game g : games) if (g.live() || dayOf(g.kickoffMs) == today) out.add(g);
+        for (Game g : games) if (g.liveAt(nowMs) || dayOf(g.kickoffMs) == today) out.add(g);
         return out.toArray(new Game[0]);
     }
 
@@ -129,13 +136,24 @@ final class FootballRules {
      */
     static Game nextToday(Game[] today, long nowMs) {
         if (today == null) return null;
-        for (Game g : today) if (g.live()) return g;
+        for (Game g : today) if (g.liveAt(nowMs)) return g;
         Game best = null;
         for (Game g : today) {
             if (!"scheduled".equals(g.status) || g.kickoffMs < nowMs - 2 * 3_600_000L) continue;
             if (best == null || g.kickoffMs < best.kickoffMs) best = g;
         }
         return best;
+    }
+
+    /** The screensaver's game, following Home Settings' Football row ("off" hides it there too). */
+    static Game screensaverGame(Feed feed, String stored, long nowMs) {
+        if (feed == null || "off".equals(stored)) return null;
+        return nextToday(feed.today, nowMs);
+    }
+
+    /** The team's next match is today (then "No games today" would contradict the team card above it). */
+    static boolean teamPlaysToday(Feed feed, long nowMs) {
+        return feed != null && feed.next != null && dayOf(feed.next.kickoffMs) == dayOf(nowMs);
     }
 
     static boolean showCard(Feed feed) {
