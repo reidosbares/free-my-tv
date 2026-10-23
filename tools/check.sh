@@ -2,7 +2,7 @@
 # What CI runs on every pull request (.github/workflows/check.yml). Run it before you push:
 #
 #   tools/check.sh           # everything
-#   tools/check.sh android   # only the Google TV build (needs what build.sh needs)
+#   tools/check.sh android   # only the Google TV build and its JVM tests (needs what build.sh needs)
 #   tools/check.sh web       # translations, the LG and Samsung packages, and ES5 (needs Python 3 and Node)
 #
 # One difference: here ./build.sh uses the newest SDK and JDK you have, while CI uses build-tools 34, android-34 and
@@ -17,6 +17,7 @@ esac
 
 if [ "$what" = all ] || [ "$what" = android ]; then
   ./build.sh
+  tools/test.sh
 fi
 
 if [ "$what" = all ] || [ "$what" = web ]; then
