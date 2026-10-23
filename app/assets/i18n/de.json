@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "one:+{n} weiteres|other:+{n} weitere",
  "plural|one:{n} day ago|other:{n} days ago": "one:vor {n} Tag|other:vor {n} Tagen",
  "plural|one:{n} season|other:{n} seasons": "one:{n} Staffel|other:{n} Staffeln",
- "prices from {ago}": "Kurse von {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Aus",
  "talkback|Sunrise {time}": "Sonnenaufgang {time}",

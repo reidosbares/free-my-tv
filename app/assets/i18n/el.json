@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "one:+{n} ακόμα|other:+{n} ακόμα",
  "plural|one:{n} day ago|other:{n} days ago": "one:πριν από {n} ημέρα|other:πριν από {n} ημέρες",
  "plural|one:{n} season|other:{n} seasons": "one:{n} σεζόν|other:{n} σεζόν",
- "prices from {ago}": "τιμές: {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Ανενεργό",
  "talkback|Sunrise {time}": "Ανατολή {time}",

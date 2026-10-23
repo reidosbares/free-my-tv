@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "one:+{n} meer|other:+{n} meer",
  "plural|one:{n} day ago|other:{n} days ago": "one:{n} dag geleden|other:{n} dagen geleden",
  "plural|one:{n} season|other:{n} seasons": "one:{n} seizoen|other:{n} seizoenen",
- "prices from {ago}": "koersen van {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Uit",
  "talkback|Sunrise {time}": "Zonsopkomst {time}",

@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "other:+{n} lagi",
  "plural|one:{n} day ago|other:{n} days ago": "other:{n} hari lalu",
  "plural|one:{n} season|other:{n} seasons": "other:{n} musim",
- "prices from {ago}": "harga {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Mati",
  "talkback|Sunrise {time}": "Matahari terbit {time}",

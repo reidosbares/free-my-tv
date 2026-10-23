@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "one:+{n} til|other:+{n} til",
  "plural|one:{n} day ago|other:{n} days ago": "one:for {n} dag siden|other:for {n} dager siden",
  "plural|one:{n} season|other:{n} seasons": "one:{n} sesong|other:{n} sesonger",
- "prices from {ago}": "kurser {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Av",
  "talkback|Sunrise {time}": "Soloppgang {time}",

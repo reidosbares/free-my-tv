@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "one:+{n} muu|other:+{n} muuta",
  "plural|one:{n} day ago|other:{n} days ago": "one:{n} päivä sitten|other:{n} päivää sitten",
  "plural|one:{n} season|other:{n} seasons": "one:{n} kausi|other:{n} kautta",
- "prices from {ago}": "kurssit {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Pois",
  "talkback|Sunrise {time}": "Aurinko nousee {time}",

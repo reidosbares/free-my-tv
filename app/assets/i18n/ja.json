@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "other:ほか{n}試合",
  "plural|one:{n} day ago|other:{n} days ago": "other:{n}日前",
  "plural|one:{n} season|other:{n} seasons": "other:{n}シーズン",
- "prices from {ago}": "{ago}の相場",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "オフ",
  "talkback|Sunrise {time}": "日の出 {time}",

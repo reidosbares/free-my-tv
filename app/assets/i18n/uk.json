@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "one:ще {n} матч|few:ще {n} матчі|many:ще {n} матчів|other:ще {n} матчу",
  "plural|one:{n} day ago|other:{n} days ago": "one:{n} день тому|few:{n} дні тому|many:{n} днів тому|other:{n} дня тому",
  "plural|one:{n} season|other:{n} seasons": "one:{n} сезон|few:{n} сезони|many:{n} сезонів|other:{n} сезону",
- "prices from {ago}": "курси: {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Вимк.",
  "talkback|Sunrise {time}": "Схід {time}",

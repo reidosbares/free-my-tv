@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "other:อีก {n} นัด",
  "plural|one:{n} day ago|other:{n} days ago": "other:{n} วันที่แล้ว",
  "plural|one:{n} season|other:{n} seasons": "other:{n} ซีซัน",
- "prices from {ago}": "ราคาจาก {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "ปิด",
  "talkback|Sunrise {time}": "พระอาทิตย์ขึ้น {time}",

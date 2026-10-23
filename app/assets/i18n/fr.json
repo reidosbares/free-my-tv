@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "one:+{n} autre|other:+{n} autres",
  "plural|one:{n} day ago|other:{n} days ago": "one:il y a {n} jour|many:il y a {n} de jours|other:il y a {n} jours",
  "plural|one:{n} season|other:{n} seasons": "one:{n} saison|many:{n} de saisons|other:{n} saisons",
- "prices from {ago}": "cours d'{ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Désactivé",
  "talkback|Sunrise {time}": "Lever {time}",

@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "one:+{n} mere|other:+{n} mere",
  "plural|one:{n} day ago|other:{n} days ago": "one:{n} dag siden|other:{n} dage siden",
  "plural|one:{n} season|other:{n} seasons": "one:{n} sæson|other:{n} sæsoner",
- "prices from {ago}": "kurser {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Fra",
  "talkback|Sunrise {time}": "Solopgang {time}",

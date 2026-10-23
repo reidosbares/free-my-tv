@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "other:+{n} trận nữa",
  "plural|one:{n} day ago|other:{n} days ago": "other:{n} ngày trước",
  "plural|one:{n} season|other:{n} seasons": "other:{n} mùa",
- "prices from {ago}": "giá từ {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Tắt",
  "talkback|Sunrise {time}": "Bình minh {time}",

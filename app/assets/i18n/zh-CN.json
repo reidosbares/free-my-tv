@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "other:还有 {n} 场",
  "plural|one:{n} day ago|other:{n} days ago": "other:{n} 天前",
  "plural|one:{n} season|other:{n} seasons": "other:{n} 季",
- "prices from {ago}": "{ago}的行情",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "关",
  "talkback|Sunrise {time}": "日出 {time}",

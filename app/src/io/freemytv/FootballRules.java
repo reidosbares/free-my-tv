@@ -123,6 +123,21 @@ final class FootballRules {
         return games - rowsShown(games, rowsThatFit);
     }
 
+    /**
+     * The screensaver's one game: a live one first, else the next to kick off (one that kicked off less than 2 h ago
+     * still counts, until the feed says it's live or over); null when none is left today.
+     */
+    static Game nextToday(Game[] today, long nowMs) {
+        if (today == null) return null;
+        for (Game g : today) if (g.live()) return g;
+        Game best = null;
+        for (Game g : today) {
+            if (!"scheduled".equals(g.status) || g.kickoffMs < nowMs - 2 * 3_600_000L) continue;
+            if (best == null || g.kickoffMs < best.kickoffMs) best = g;
+        }
+        return best;
+    }
+
     static boolean showCard(Feed feed) {
         return feed != null && (feed.next != null || (feed.today != null && feed.today.length > 0));
     }

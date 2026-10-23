@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "one:+{n} jogo|other:+{n} jogos",
  "plural|one:{n} day ago|other:{n} days ago": "one:há {n} dia|other:há {n} dias",
  "plural|one:{n} season|other:{n} seasons": "one:{n} temporada|other:{n} temporadas",
- "prices from {ago}": "cotações de {ago}",
  "quotes|{ago}": "de {ago}",
  "shelf|Off": "Fora",
  "talkback|Sunrise {time}": "Nascer do sol {time}",

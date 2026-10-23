@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "one:+{n} altra|other:+{n} altre",
  "plural|one:{n} day ago|other:{n} days ago": "one:{n} giorno fa|many:{n} di giorni fa|other:{n} giorni fa",
  "plural|one:{n} season|other:{n} seasons": "one:{n} stagione|many:{n} di stagioni|other:{n} stagioni",
- "prices from {ago}": "quotazioni di {ago}",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "Disattivo",
  "talkback|Sunrise {time}": "Alba {time}",

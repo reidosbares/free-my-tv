@@ -86,6 +86,16 @@ public final class FootballRulesTest {
         check(showCard(f), "a next match alone is enough");
         check(stale(0, 2 * 3_600_000L + 1) && !stale(0, 3_600_000L), "stale after 2 h");
 
+        Game live1630 = at(2026, 10, 24, 16, 30, "live"), next1830 = at(2026, 10, 24, 18, 30, "scheduled");
+        Game done1630 = at(2026, 10, 24, 16, 30, "finished");
+        check(nextToday(games(next1830, live1630), brt(2026, 10, 24, 17, 0)) == live1630, "a live game comes first");
+        check(nextToday(games(done1630, next1830), brt(2026, 10, 24, 17, 0)) == next1830, "then the next to kick off");
+        check(nextToday(games(done1630), brt(2026, 10, 24, 19, 0)) == null, "none left today");
+        check(nextToday(new Game[0], brt(2026, 10, 24, 19, 0)) == null && nextToday(null, 0) == null, "no games");
+        Game late = at(2026, 10, 24, 18, 30, "scheduled");
+        check(nextToday(games(late), brt(2026, 10, 24, 19, 0)) == late, "kicked off but not yet live in the feed: still shown");
+        check(nextToday(games(late), brt(2026, 10, 24, 21, 0)) == null, "more than 2 h past kickoff: gone");
+
         if (failures > 0) {
             System.out.println(failures + " check(s) failed");
             System.exit(1);

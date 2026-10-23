@@ -176,7 +176,6 @@
  "plural|one:+{n} more|other:+{n} more": "other:외 {n}경기",
  "plural|one:{n} day ago|other:{n} days ago": "other:{n}일 전",
  "plural|one:{n} season|other:{n} seasons": "other:시즌 {n}개",
- "prices from {ago}": "{ago} 시세",
  "quotes|{ago}": "{ago}",
  "shelf|Off": "끔",
  "talkback|Sunrise {time}": "일출 {time}",
