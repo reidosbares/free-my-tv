@@ -306,6 +306,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Paint tileFill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path clip = new Path();
     private final RectF tmp = new RectF(), cell = new RectF(), screen = new RectF();
+    // Frosted glass over a photo: the photo's blurred copy under a card (its shader made once per photo).
+    private final Paint frostGlass = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Paint frostTint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Matrix frostMatrix = new Matrix();
+    private Bitmap frostGlassFor;
+    private float layerOffsetY;
     private final TextPaint fitPaint = new TextPaint();
     private final RectF gridCell = new RectF();
     private LinearGradient[] tileShaders = new LinearGradient[0];
@@ -349,7 +355,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             // The layer may be shifted (bottom drawer): the glass reads the background from where it really is. The
             // drawer and the top buttons are always drawn as if resting in place (they are only visible there and are
             // not redrawn while they move).
-            scene.setOffset(0, kind == DRAWER || kind == STATUS ? 0 : getTranslationY());
+            layerOffsetY = kind == DRAWER || kind == STATUS ? 0 : getTranslationY();
+            scene.setOffset(0, layerOffsetY);
             shadows.dither = dark() > 0.5f;
             switch (kind) {
                 case SKY: drawSky(c); break;
@@ -1667,7 +1674,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (dk > 0.001f) scene.glass(c, r, radius, SMOKE, 0.4f, 0, 0, 0.02f, 1, dk);
             return;
         }
-        // Over a photo by day: clear glass, as on the shelf.
+        // Over a photo by day: frosted glass, a little darker, so the white text reads on any photo.
         float smoke = dk * (1 - clear);
         if (smoke > 0.004f) {
             if (smoke >= 0.999f || !scene.flat()) {
@@ -1678,7 +1685,27 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 c.restoreToCount(save);
             }
         }
-        scene.clear(c, r, radius, 0.16f * clear, clear);
+        if (!frostedGlass(c, r, radius, clear)) scene.clear(c, r, radius, 0.16f * clear, clear);
+    }
+
+    /** The photo's blurred copy under the card, darkened, with the glass rim (like iOS widgets over a wallpaper). */
+    private boolean frostedGlass(Canvas c, RectF r, float radius, float alpha) {
+        Bitmap img = isPhoto(bgTo) ? bgTo.frostImage : null;
+        if (img == null || img.isRecycled()) return false;
+        if (img != frostGlassFor) {
+            frostGlassFor = img;
+            frostGlass.setShader(new BitmapShader(img, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+        }
+        // The layer may be shifted (drawer): read the photo from where the card really is on screen.
+        frostMatrix.setScale(screen.width() / img.getWidth(), screen.height() / img.getHeight());
+        frostMatrix.postTranslate(screen.left, screen.top - layerOffsetY);
+        frostGlass.getShader().setLocalMatrix(frostMatrix);
+        frostGlass.setAlpha(Math.round(255 * alpha));
+        c.drawRoundRect(r, radius, radius, frostGlass);
+        frostTint.setColor(Ui.alpha(0xFF000000, 0.3f * alpha));
+        c.drawRoundRect(r, radius, radius, frostTint);
+        scene.clear(c, r, radius, 0.06f * alpha, alpha);
+        return true;
     }
 
     private void drawerCard(Canvas c, RectF r) {
