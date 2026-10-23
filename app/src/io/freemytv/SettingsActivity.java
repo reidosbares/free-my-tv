@@ -162,6 +162,7 @@ public class SettingsActivity extends Activity {
         private Backgrounds.Photo previewPhoto;
         private String previewId, previewCredit;
         private int previewGen, previewCreditGen = -1;
+        private boolean previewDecoding;
         private final Paint previewPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final android.graphics.Matrix previewMatrix = new android.graphics.Matrix();
         private Paint previewCaption;
@@ -300,6 +301,7 @@ public class SettingsActivity extends Activity {
 
         void pause() {
             running = false;
+            flushTheme();
             if (Backgrounds.hasKey()) Backgrounds.get(getContext()).removeListener(this);
             releasePreview();
             handler.removeCallbacks(poll);
@@ -368,7 +370,9 @@ public class SettingsActivity extends Activity {
                 return;
             }
             if (p.id.equals(previewId)) return;
-            releasePreview();
+            releasePreview();   // a decode in flight is now stale
+            if (previewDecoding) return;   // one at a time: it calls syncPreview again when it ends
+            previewDecoding = true;
             previewId = p.id;
             int gen = previewGen;
             File file = b.currentFile();
@@ -376,8 +380,10 @@ public class SettingsActivity extends Activity {
             new Thread(() -> {
                 Bitmap bm = decodePreview(file, pw, ph);
                 handler.post(() -> {
+                    previewDecoding = false;
                     if (gen != previewGen) {
                         if (bm != null) bm.recycle();
+                        syncPreview();
                         return;
                     }
                     if (bm == null) {   // no file (being swapped): the next key or change tries again
@@ -701,6 +707,7 @@ public class SettingsActivity extends Activity {
 
         boolean onKey(KeyEvent e) {
             boolean handled = handleKey(e);
+            if (screen != HOME_SETTINGS) flushTheme();
             syncPreview();   // Home Settings opened or left, or its photo changed
             return handled;
         }
@@ -944,7 +951,10 @@ public class SettingsActivity extends Activity {
                     String[] themes = BackgroundRules.THEMES;
                     int at = java.util.Arrays.asList(themes).indexOf(Prefs.bgTheme());
                     Prefs.setBgTheme(themes[(at + dir + themes.length) % themes.length]);   // turns Keep off
-                    b.themeChanged();
+                    // Flipping through the themes: the photo follows once they land on one, not at every press.
+                    themePending = true;
+                    handler.removeCallbacks(applyTheme);
+                    handler.postDelayed(applyTheme, 1500);
                     break;
                 }
                 case BG_EVERY: Prefs.setBgEvery("day".equals(Prefs.bgEvery()) ? "hour" : "day"); break;
@@ -954,6 +964,17 @@ public class SettingsActivity extends Activity {
                     if (dir > 0 && b.active(getContext()) && b.hasNext()) b.skip();
                     break;
             }
+        }
+
+        private boolean themePending;
+        private final Runnable applyTheme = this::flushTheme;
+
+        /** The background theme chosen on the TV reaches Backgrounds (at once when the screen is left before). */
+        private void flushTheme() {
+            handler.removeCallbacks(applyTheme);
+            if (!themePending) return;
+            themePending = false;
+            Backgrounds.get(getContext()).themeChanged();
         }
 
         private void askCity() {

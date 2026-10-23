@@ -58,6 +58,7 @@ final class Backgrounds {
     private volatile Backdrop decoded;
     private volatile boolean decoding;
     private volatile long failedAt;
+    private volatile int failCode;   // the HTTP code of the last failure (0: none, or not HTTP)
     private boolean loaded;
 
     private Backgrounds(Context c) {
@@ -142,22 +143,30 @@ final class Backgrounds {
         });
     }
 
-    /** The theme changed: the next photo goes, and the current one too when it's of another theme. */
+    /**
+     * The theme changed: a next or current photo of another theme goes, and one of the new theme is fetched. Nothing
+     * to do when both are already of this theme (flipping through the themes and back).
+     */
     void themeChanged() {
         io.execute(() -> {
             load();
             String theme = Prefs.bgTheme();
-            dropNext();
-            Photo c = current;
+            Photo c = current, n = next;
+            boolean keepNext = n != null && theme.equals(n.theme);
+            if (keepNext && c != null && theme.equals(c.theme)) return;
+            if (!keepNext) dropNext();
             if (c != null && !theme.equals(c.theme)) {
                 current = null;
                 decoded = null;
                 delete(file("current.jpg"));
                 notifyListeners();
             }
-            failedAt = 0;   // a choice on the TV is tried at once
+            // A choice on the TV is tried at once, unless Unsplash refused the key or the hour's quota is spent.
+            if (failCode != 403 && failCode != 429) failedAt = 0;
             save();
-            if (active(context)) ensureNext();
+            if (!active(context)) return;
+            if (current == null && keepNext && promote()) notifyListeners();
+            ensureNext();
         });
     }
 
@@ -264,6 +273,7 @@ final class Backgrounds {
             download(BackgroundRules.sized(raw, Backdrop.W, Backdrop.H), file("next.jpg"));
             next = p;
             failedAt = 0;
+            failCode = 0;
             save();
             AppLog.w("backgrounds: next " + p.id + " (" + theme + ")");
             notifyListeners();   // Home Settings' "New background now" stops saying Loading
@@ -314,6 +324,7 @@ final class Backgrounds {
 
     private void failed(Exception e) {
         failedAt = System.currentTimeMillis();
+        failCode = e instanceof HttpError ? ((HttpError) e).code : 0;
         AppLog.w("backgrounds: " + e.getClass().getSimpleName() + (e instanceof HttpError ? " HTTP " + ((HttpError) e).code : ""));
     }
 
@@ -400,6 +411,7 @@ final class Backgrounds {
         try (FileInputStream in = new FileInputStream(f)) {
             JSONObject o = new JSONObject(read(in));
             failedAt = o.optLong("failedAt");
+            failCode = o.optInt("failCode");
             JSONObject topics = o.optJSONObject("topics");
             if (topics != null) {
                 for (Iterator<String> it = topics.keys(); it.hasNext(); ) {
@@ -421,7 +433,7 @@ final class Backgrounds {
         try {
             JSONObject topics = new JSONObject();
             for (Map.Entry<String, String> e : topicIds.entrySet()) topics.put(e.getKey(), e.getValue());
-            JSONObject o = new JSONObject().put("failedAt", failedAt).put("topics", topics);
+            JSONObject o = new JSONObject().put("failedAt", failedAt).put("failCode", failCode).put("topics", topics);
             if (current != null) o.put("current", json(current));
             if (next != null) o.put("next", json(next));
             //noinspection ResultOfMethodCallIgnored
