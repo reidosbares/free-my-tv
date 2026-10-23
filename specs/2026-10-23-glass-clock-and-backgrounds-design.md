@@ -73,12 +73,15 @@ The reference mockups (browser approximations with SVG filters) are in
   TMDB key in CLAUDE.md: the person creates it and pastes it in themselves; never asked for in chat, never printed,
   never committed. Added to `config.example.properties`, the README's settings table and a short "The Unsplash key"
   section, and to the generated `Config.java` (`UNSPLASH_KEY`). Without it, everything works as today (the gradient).
-- **Five themes:** Nature, Aerials, Abstract, Architecture, Travel. Each is a set of Unsplash photos in landscape
+- **Five themes:** Nature, Aerials, Abstract, Architecture, Surprise me. *(Travel was replaced by Surprise me after
+  trying it: too weak. Surprise me = an Unsplash search for "wallpaper <word>", the word picked at random for each new
+  photo, never the same twice in a row, from: mountains, ocean, forest, desert, night sky, aurora, lake, waterfall,
+  clouds, snow, sunset, minimal, city lights, coast, canyon, sports.)* Each is a set of Unsplash photos in landscape
   orientation. Nature, Travel and Architecture map to Unsplash's curated topics; Aerials to a search (aerial / drone
   photography); Abstract to Unsplash's abstract photos (fluid art, gradients, 3D renders). The exact topics and
   queries are the builder's to pick and check against the API; the bar is "every photo looks like a wallpaper."
 - **Three new rows in Home Settings** (after Theme):
-  - **Background:** Nature · Aerials · Abstract · Architecture · Travel · Plain (today's gradient).
+  - **Background:** Nature · Aerials · Abstract · Architecture · Surprise me · Plain (today's gradient).
   - **Change background:** Every hour · Every day.
   - **Keep this background:** Off / On. On keeps the photo that's on the home screen now and stops the rotation; Off
     goes back to rotating. Changing the theme turns it Off.
