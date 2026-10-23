@@ -152,7 +152,10 @@ final class Backgrounds {
 
     // MARK: - Work on io
 
-    /** Next becomes current: its file, shownAt now, and Unsplash is told it was used. */
+    /**
+     * Next becomes current: its file, shownAt now, and Unsplash is told it was used. The new photo is decoded before
+     * it's published, so current() keeps the old one until then, never null in between.
+     */
     private boolean promote() {
         Photo n = next;
         File from = file("next.jpg"), to = file("current.jpg");
@@ -162,16 +165,25 @@ final class Backgrounds {
             return false;
         }
         n.shownAt = System.currentTimeMillis();
-        current = n;
         next = null;
-        decoded = null;
+        Backdrop b;
+        try {
+            b = decode(to);
+        } catch (IOException | RuntimeException | OutOfMemoryError e) {
+            current = n;
+            decoded = null;
+            save();
+            lost(e);
+            return true;
+        }
+        decoded = b;
+        current = n;
         save();
-        boolean ok = decodeCurrent();
-        if (ok && n.downloadLocation != null && !n.downloadLocation.isEmpty()) {
+        if (n.downloadLocation != null && !n.downloadLocation.isEmpty()) {
             try {
                 get(n.downloadLocation);
-            } catch (Exception e) {
-                failed(e);
+            } catch (Exception e) {   // only counts the use: no reason to wait before the next download
+                AppLog.w("backgrounds: download_location " + e.getClass().getSimpleName());
             }
         }
         return true;
@@ -179,29 +191,36 @@ final class Backgrounds {
 
     /** Builds the backdrop of current.jpg; a missing or unreadable file means there is no current photo. */
     private boolean decodeCurrent() {
-        File f = file("current.jpg");
         try {
-            if (!f.exists()) throw new IOException();
-            BitmapFactory.Options bounds = new BitmapFactory.Options();
-            bounds.inJustDecodeBounds = true;
-            BitmapFactory.decodeFile(f.getPath(), bounds);
-            BitmapFactory.Options opts = new BitmapFactory.Options();
-            opts.inSampleSize = 1;
-            while (bounds.outWidth / (opts.inSampleSize * 2) >= Backdrop.W) opts.inSampleSize *= 2;
-            Bitmap b = BitmapFactory.decodeFile(f.getPath(), opts);
-            if (b == null) throw new IOException();
-            decoded = Backdrop.make(b, false);
+            decoded = decode(file("current.jpg"));
             return true;
         } catch (IOException | RuntimeException | OutOfMemoryError e) {
-            AppLog.w("background image: " + e.getClass().getSimpleName());
-            if (!(e instanceof OutOfMemoryError)) {
-                delete(f);
-                current = null;
-                decoded = null;
-                save();
-            }
+            lost(e);
             return false;
         }
+    }
+
+    private static Backdrop decode(File f) throws IOException {
+        if (!f.exists()) throw new IOException();
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(f.getPath(), bounds);
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inSampleSize = 1;
+        while (bounds.outWidth / (opts.inSampleSize * 2) >= Backdrop.W) opts.inSampleSize *= 2;
+        Bitmap b = BitmapFactory.decodeFile(f.getPath(), opts);
+        if (b == null) throw new IOException();
+        return Backdrop.make(b, false);
+    }
+
+    /** current.jpg couldn't be decoded: unreadable, it goes (out of memory, it stays for current() to try again). */
+    private void lost(Throwable e) {
+        AppLog.w("background image: " + e.getClass().getSimpleName());
+        if (e instanceof OutOfMemoryError) return;
+        delete(file("current.jpg"));
+        current = null;
+        decoded = null;
+        save();
     }
 
     /** Downloads the next photo unless it's there or the last failure was under 10 minutes ago. */

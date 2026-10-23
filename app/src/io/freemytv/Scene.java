@@ -182,6 +182,28 @@ final class Scene {
         liquidPaint.setAlpha(255);
     }
 
+    /** True without the shaders (Android 8 to 12): the flat glass draws at full opacity whatever its alpha. */
+    boolean flat() {
+        return liquid == null;
+    }
+
+    /** Clear glass over a photo: a flat white film at `alpha` and the light rim (at `rimAlpha`), the same everywhere. */
+    void clear(Canvas c, RectF r, float radius, float alpha) {
+        clear(c, r, radius, alpha, 1);
+    }
+
+    void clear(Canvas c, RectF r, float radius, float alpha, float rimAlpha) {
+        if (alpha > 0.004f) {
+            flatFill.setColor(Ui.alpha(0xFFFFFFFF, alpha));
+            c.drawRoundRect(r, radius, radius, flatFill);
+        }
+        if (rimAlpha > 0.004f) {
+            flatRim.setColor(Ui.alpha(0x33FFFFFF, rimAlpha));
+            c.drawRoundRect(r, radius, radius, flatRim);
+            flatRim.setColor(0x33FFFFFF);
+        }
+    }
+
     /** The glass now reads the blurred background image (Backdrop.FW × FH, ARGB). */
     void setFrost(int[] pixels) {
         imageFrost = true;

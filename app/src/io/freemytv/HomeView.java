@@ -62,7 +62,8 @@ import java.util.function.Consumer;
  * Measurements are in a 1920×1080 space (k = width / 1920). The screen is split into layers so the TV's weak GPU only
  * redraws what changed.
  */
-final class HomeView extends ViewGroup implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
+final class HomeView extends ViewGroup implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener,
+        Backgrounds.Listener {
     // tvOS grid (Human Interface Guidelines): content inside the safe area, 80 px from the sides and 60 from top and
     // bottom; 40 px between items; 7 columns of 217 px (the apps). The shelf glass extends 36 px past the tiles (the
     // same padding on all four sides) and the tile corners are concentric with it (glass radius = radius + padding).
@@ -112,6 +113,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final HomeData data;
     private final FootballData football;
     private final Recs recs;
+    private final Backgrounds backgrounds;
     private final Click click;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final SharedPreferences ui;
@@ -204,6 +206,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Spring heroFocus = new Spring(0.28f, 0.85f, 0);
     private final RectF heroButton = new RectF();
     private Backdrop bgFrom, bgTo;     // null = gradient (no photo)
+    // The photo look (an Unsplash photo up): 0 = today's light look, 1 = the photo's; eased with the cross-fade.
+    private float photo, photoFrom, shadowPhoto = -1;
+    private Backgrounds.Photo shownPhoto, creditFor;
+    private String creditText = "";
+    private int creditGeneration = -1;
+    private Paint creditPaint;
+    private android.graphics.ColorFilter photoVeilFilter;
+    private float photoVeilAmount = -1;
     private final int[] frostMix = new int[Backdrop.FW * Backdrop.FH];
 
     // Bottom drawer
@@ -380,6 +390,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data = HomeData.get(a);
         football = FootballData.get(a);
         recs = Recs.get(a);
+        backgrounds = Backgrounds.get(a);
         click = new Click(a);
         ui = a.getSharedPreferences("home-ui", Context.MODE_PRIVATE);
         tvInputs = (TvInputManager) a.getSystemService(Context.TV_INPUT_SERVICE);
@@ -420,6 +431,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         setLightButtons(HomeApps.topButtons());
         recs.setLight(true);
         checkNight(false);
+        showPhotoNow();
         sheetLayer.setVisibility(INVISIBLE);
         scene.setMotion(0.6f, 0f);
         updatePalette();
@@ -445,6 +457,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data.addListener(this);
         football.addListener(this);
         recs.addListener(this);
+        backgrounds.addListener(this);
+        backgrounds.resume();
         data.refreshIfStale();
         football.refreshIfStale();
         recs.refreshIfStale();
@@ -475,6 +489,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data.removeListener(this);
         football.removeListener(this);
         recs.removeListener(this);
+        backgrounds.removeListener(this);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
     }
 
@@ -550,6 +565,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     @Override public void onRecs() {
+        wake();
+        updatePicks();
+    }
+
+    @Override public void onBackground() {
         wake();
         updatePicks();
     }
@@ -643,6 +663,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lClock = Ui.numbers(Ui.light, 200 * k, L_INK);
         lClock.setLetterSpacing(-0.01f);
         lWeather = Ui.text(Ui.medium, 34 * k, L_DIM);
+        creditPaint = Ui.text(Ui.medium, 22 * k, 0x99FFFFFF);
+        creditPaint.setTextAlign(Paint.Align.RIGHT);
+        shadowPhoto = -1;
         lightGradient = null;
         buttonPaint = Ui.text(Ui.semibold, 29 * k, INK);
         capsuleText = Ui.numbers(Ui.medium, 29 * k, 0xF2FFFFFF);
@@ -887,6 +910,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (bgFadeAt == 0 || fadeEase(bgFadeAt, up) >= 0.5f) bgFrom = bgTo;
         bgTo = b;
         bgFadeAt = up;
+        photoFrom = photo;
+        if (isPhoto(b)) shownPhoto = backgrounds.currentPhoto();
         nightPair = false;
         if (b == null || glassOf(b) == null) return;
         if (bgFrom == null || glassOf(bgFrom) == null) {
@@ -897,8 +922,39 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
     }
 
+    /**
+     * Built with the home screen (a new one after a recreate): the photo that's ready goes up at once, without the
+     * fade from the gradient.
+     */
+    private void showPhotoNow() {
+        Backdrop b = backgrounds.active(getContext()) ? backgrounds.current() : null;
+        if (b == null) return;
+        bgTo = b;
+        bgFrom = null;
+        bgFadeAt = 0;
+        photo = photoFrom = 1;
+        shownPhoto = backgrounds.currentPhoto();
+        scene.setFrost(frostOf(b));
+        scene.setGlassImage(glassOf(b));
+        nightPair = false;
+    }
+
+    /** An Unsplash photo (built for the photo look): pick photos have the light version, these don't. */
+    private static boolean isPhoto(Backdrop b) {
+        return b != null && b.lightImage == null;
+    }
+
+    /** A photo's glass or frost pixels, darkened at night as the photo itself is (into `out`, for the current one). */
+    private int[] photoNight(int[] px, int[] out, Backdrop b) {
+        if (night <= 0.001f || b != bgTo || px.length != out.length) return px;
+        float f = 0.45f * night;
+        for (int i = 0; i < out.length; i++) out[i] = mix(px[i], 0xFF000000, f);
+        return out;
+    }
+
     /** What the glass shows: the photo lightened (by day), darkened (at night) or blended in between. */
     private int[] glassOf(Backdrop b) {
+        if (isPhoto(b)) return photoNight(b.glass, glassNight, b);
         if (b.nightGlass == null || night <= 0.001f) return b.lightGlass;
         if (night >= 0.999f) return b.nightGlass;
         // During the transition, the blend (only for the current background; a photo fading in uses the nearer side).
@@ -919,6 +975,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** What the frosted glass shows (drawer, toasts): the blurred photo, darkened at night. */
     private int[] frostOf(Backdrop b) {
+        if (isPhoto(b)) return photoNight(b.frost, frostNight, b);
         if (b.nightFrost == null || night <= 0.001f) return b.frost;
         if (night >= 0.999f) return b.nightFrost;
         if (b != bgTo) return night < 0.5f ? b.frost : b.nightFrost;
@@ -970,6 +1027,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 scene.setGlassImage(glassOf(bgTo));
                 nightPair = false;
             }
+        } else if (bgFadeAt == 0 && isPhoto(bgTo)) {
+            scene.setFrost(frostOf(bgTo));
+            scene.setGlassImage(glassOf(bgTo));
+            nightPair = false;
         } else if (bgFadeAt == 0 && bgTo == null) {
             neutralGlass();
         }
@@ -978,9 +1039,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         platter.invalidate();
     }
 
-    /** How dark it is: 0 = day, 1 = night (in between during the transition). */
+    /** How dark it is: 0 = day, 1 = night (in between during the transition); a photo up counts as night. */
     private float dark() {
-        return night;
+        return Math.max(night, photo);
     }
 
     /** The day color or the night color, depending on the night value (blended during the transition). */
@@ -1003,11 +1064,32 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lDate.setColor(tone(L_DIM, 0xFF98989D));
         lClock.setColor(tone(L_INK, WHITE));
         lWeather.setColor(tone(L_DIM, 0xFF98989D));
+        if (photo != shadowPhoto) {   // white text over a photo gets the soft shadow
+            shadowPhoto = photo;
+            softShadow(lTitle);
+            softShadow(lTab);
+            softShadow(lTabOn);
+            softShadow(lCardTitle);
+            softShadow(lCardMeta);
+            softShadow(lTip);
+            softShadow(lDate);
+            softShadow(lClock);
+            softShadow(lWeather);
+            softShadow(creditPaint);
+        }
+    }
+
+    private void softShadow(Paint p) {
+        if (photo <= 0.001f) p.clearShadowLayer();
+        else p.setShadowLayer(22 * k, 0, 2 * k, Ui.alpha(0x59000000, photo));
     }
 
     private boolean tickBackgroundFade(long up) {
         if (bgFadeAt == 0) return false;
         float e = fadeEase(bgFadeAt, up);
+        float photoTo = isPhoto(bgTo) ? 1 : 0;
+        photo = photoFrom + (photoTo - photoFrom) * e;
+        if (photoFrom != photoTo) heroDirty = tilesDirty = true;   // the text and the glass follow the photo
         if (bgTo != null && bgFrom != null && glassOf(bgFrom) != null && glassOf(bgTo) != null) {
             if (drawerLayer.getVisibility() == VISIBLE || toast != null) {
                 int[] from = frostOf(bgFrom), to = frostOf(bgTo);
@@ -1019,6 +1101,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (e >= 1) {
             bgFadeAt = 0;
             bgFrom = null;
+            photo = photoFrom = photoTo;
             if (bgTo == null) {
                 neutralGlass();
             } else {
@@ -1199,15 +1282,34 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** Shelf layer: the glass bar and its shadow (it only changes with the background). */
     private void drawPlatter(Canvas c) {
+        drawCredit(c);
         if (shelf.isEmpty()) return;
         float radius = (TILE_RADIUS + SHELF_PAD) * k;
         tmp.set(platterRect);
         tmp.offset(0, 18 * k);
         shadow.setColor(tone(0x1F000000, 0x52000000));
         shadows.draw(c, tmp, radius, SHADOW_BLUR * k, shadow);
-        // White glass by day; smoked glass at night.
-        scene.liquid(c, platterRect, radius, tone(0xFFFFFFFF, SMOKE), tone(0.42f, 0.12f), tone(0.03f, 0.08f),
-                tone(30, 34) * k, tone(22, 28) * k, tone(0.65f, 0.95f), 1);
+        // White glass by day; smoked glass at night; clear glass over a photo by day.
+        float clear = photo * (1 - night);
+        fadedLiquid(c, platterRect, radius, tone(0xFFFFFFFF, SMOKE), tone(0.42f, 0.12f), tone(0.03f, 0.08f),
+                tone(30, 34) * k, tone(22, 28) * k, tone(0.65f, 0.95f), 1, 1 - clear);
+        scene.clear(c, platterRect, radius, 0.16f * clear, clear);
+    }
+
+    /**
+     * scene.liquid, faded out by `fade` as the photo's clear glass takes over. The flat glass (no shaders) ignores its
+     * alpha, so there the fade goes through a layer, only while it's between 0 and 1.
+     */
+    private void fadedLiquid(Canvas c, RectF r, float radius, int tint, float tintAlpha, float lift, float band,
+                             float refraction, float specular, float alpha, float fade) {
+        if (fade <= 0.004f) return;
+        if (fade >= 0.999f || !scene.flat()) {
+            scene.liquid(c, r, radius, tint, tintAlpha, lift, band, refraction, specular, alpha * Math.min(1, fade));
+            return;
+        }
+        int save = c.saveLayerAlpha(r.left - 2, r.top - 2, r.right + 2, r.bottom + 2, Math.round(255 * fade));
+        scene.liquid(c, r, radius, tint, tintAlpha, lift, band, refraction, specular, alpha);
+        c.restoreToCount(save);
     }
 
     private void drawTiles(Canvas c) {
@@ -2915,10 +3017,18 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
         }
         for (Recs.Pick p : recs.wanted()) recs.backdrop(p);   // all three tabs preloaded: switching tabs is instant
-        Backdrop b = cards.isEmpty() ? null : recs.backdrop(cards.get(0));
+        Backdrop b = cards.isEmpty() ? photoBackdrop() : recs.backdrop(cards.get(0));
         if (cards.isEmpty() || b != null) showBackdrop(b);
         heroDirty = true;
         spoken.focusMoved();    // new picks under the focused card
+    }
+
+    /** Without picks: the Unsplash photo (the one on screen while the current is decoded again), or the gradient. */
+    private Backdrop photoBackdrop() {
+        if (!backgrounds.active(getContext())) return null;
+        Backdrop b = backgrounds.current();
+        if (b == null && backgrounds.currentPhoto() != null && isPhoto(bgTo)) return bgTo;
+        return b;
     }
 
     private void selectTab(int index) {
@@ -2957,14 +3067,62 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             fill.setColorFilter(null);
         }
         imagePaint.setColorFilter(v);
-        if (fading && bgFrom != null) drawLightImage(c, bgFrom, bgTo == null ? 1 - e : 1);
-        if (bgTo != null) drawLightImage(c, bgTo, fading ? e : 1);
+        if (fading && bgFrom != null) drawLightImage(c, bgFrom, bgTo == null ? 1 - e : 1, v);
+        if (bgTo != null) drawLightImage(c, bgTo, fading ? e : 1, v);
         imagePaint.setColorFilter(null);
     }
 
-    private void drawLightImage(Canvas c, Backdrop b, float alpha) {
+    private void drawLightImage(Canvas c, Backdrop b, float alpha, android.graphics.ColorFilter v) {
+        if (isPhoto(b)) {
+            drawPhoto(c, b, alpha);
+            imagePaint.setColorFilter(v);
+            return;
+        }
         if (night < 0.999f || b.nightImage == null) drawImage(c, b.lightImage, alpha);
         if (night > 0.001f) drawImage(c, b.nightImage, alpha * night);
+    }
+
+    /**
+     * An Unsplash photo, sharp, darkened at night; with the drawer open, its frosted version on top, a little darker
+     * (lightening it would put white text on white).
+     */
+    private void drawPhoto(Canvas c, Backdrop b, float alpha) {
+        float d = Ui.clamp(drawer.value);
+        imagePaint.setColorFilter(photoVeil(1 - (1 - 0.45f * night) * (1 - 0.15f * d)));
+        drawImage(c, b.image, alpha);
+        if (d > 0.004f && b.frostImage != null) drawImage(c, b.frostImage, alpha * d);
+    }
+
+    /** veil() toward black for the photo, with its own cache (the gradient's veil may be drawn in the same frame). */
+    private android.graphics.ColorFilter photoVeil(float amount) {
+        if (amount <= 0.002f) return null;
+        amount = Math.round(amount * 255) / 255f;
+        if (amount == photoVeilAmount) return photoVeilFilter;
+        photoVeilAmount = amount;
+        float keep = 1 - amount;
+        return photoVeilFilter = new android.graphics.ColorMatrixColorFilter(new float[] {
+            keep, 0, 0, 0, 0,
+            0, keep, 0, 0, 0,
+            0, 0, keep, 0, 0,
+            0, 0, 0, 1, 0});
+    }
+
+    /**
+     * The photographer's credit (Unsplash's rules), small and quiet above the shelf, on the right. In the shelf's layer:
+     * the hero's ends above it.
+     */
+    private void drawCredit(Canvas c) {
+        if (photo <= 0.004f || shownPhoto == null) return;
+        applyTone();
+        if (shownPhoto != creditFor || Ui.generation != creditGeneration) {
+            creditFor = shownPhoto;
+            creditGeneration = Ui.generation;
+            String name = shownPhoto.author == null ? "" : shownPhoto.author.trim();
+            creditText = name.isEmpty() ? "Unsplash" : Ui.trf("Photo: {name}, Unsplash", "name", name);
+        }
+        float base = shelf.isEmpty() ? h - 60 * k : platterRect.top - 18 * k;
+        creditPaint.setColor(Ui.alpha(0x99FFFFFF, photo));
+        c.drawText(creditText, CONTENT_R * k, base, creditPaint);
     }
 
     private void drawLightTop(Canvas c) {
@@ -3112,8 +3270,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             tmp.offset(0, (6 + 8 * f) * k);
             shadow.setColor(Ui.alpha(0xFF000000, tone(0.1f, 0.3f) + tone(0.14f, 0.2f) * f));
             shadows.draw(c, tmp, rad, SHADOW_BLUR * k, shadow);
-            scene.liquid(c, cell, rad, tone(0xFFFFFFFF, SMOKE), tone(0.55f, 0.5f), tone(0.02f, 0.01f), 12 * k, 8 * k,
-                    tone(0.6f, 0.45f), 1 - f);
+            float clear = photo * (1 - night);
+            fadedLiquid(c, cell, rad, tone(0xFFFFFFFF, SMOKE), tone(0.55f, 0.5f), tone(0.02f, 0.01f), 12 * k, 8 * k,
+                    tone(0.6f, 0.45f), 1 - f, 1 - clear);
+            scene.clear(c, cell, rad, 0.16f * clear * (1 - f), clear * (1 - f));
             if (f > 0.01f) {
                 fill.setShader(null);
                 fill.setColor(Ui.alpha(0xFFFFFFFF, f));
