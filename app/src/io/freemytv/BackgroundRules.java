@@ -17,7 +17,7 @@ public final class BackgroundRules {
     /** The request params for a theme (a topic slug or a search), or null for plain. */
     public static String source(String theme) {
         switch (theme(theme)) {
-            case "aerials": return "query=aerial drone";
+            case "aerials": return "query=aerial view";
             case "abstract": return "query=abstract";
             case "architecture": return "topics=architecture-interior";
             case "travel": return "topics=travel";

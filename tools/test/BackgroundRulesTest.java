@@ -16,7 +16,7 @@ public final class BackgroundRulesTest {
     public static void main(String[] args) {
         check("nature".equals(theme(null)) && "nature".equals(theme("bogus")) && "travel".equals(theme("travel")), "theme default/valid");
         check(source("plain") == null, "plain has no source");
-        check(randomUrl("aerials").contains("query=aerial%20drone") || randomUrl("aerials").contains("query=aerial+drone"), "aerials is a search");
+        check(randomUrl("aerials").contains("query=aerial%20view") || randomUrl("aerials").contains("query=aerial+view"), "aerials is a search");
         check(randomUrl("nature").startsWith("https://api.unsplash.com/photos/random?orientation=landscape&content_filter=high&"), "base url");
         check(!randomUrl("nature").contains("client_id"), "key never in the URL");
         check(sized("https://images.unsplash.com/photo-1?ixid=x", 1920, 1080).endsWith("&w=1920&h=1080&fit=crop&crop=entropy&fm=jpg&q=82"), "sized");

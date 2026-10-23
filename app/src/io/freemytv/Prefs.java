@@ -96,6 +96,23 @@ final class Prefs {
 
     static void setTheme(String v) { put("theme", v); }
 
+    // MARK: - Photo backgrounds (Unsplash)
+
+    static String bgTheme() { return BackgroundRules.theme(sp().getString("bg_theme", null)); }
+
+    /** A new theme also stops keeping the current photo. */
+    static void setBgTheme(String v) {
+        sp().edit().putString("bg_theme", BackgroundRules.theme(v)).putBoolean("bg_keep", false).apply();
+        version++;
+    }
+
+    /** "hour" or "day". */
+    static String bgEvery() { return BackgroundRules.every(sp().getString("bg_every", null)); }
+    static void setBgEvery(String v) { put("bg_every", BackgroundRules.every(v)); }
+
+    static boolean bgKeep() { return sp().getBoolean("bg_keep", false); }
+    static void setBgKeep(boolean on) { put("bg_keep", on); }
+
     // MARK: - City
 
     static String city() { return sp().getString("city", Config.CITY).trim(); }

@@ -46,6 +46,7 @@ final class Backdrop {
     final Bitmap lightImage;            // by day: the background (the lightened frosted version, scaled up on screen)
     final int[] nightFrost, nightGlass; // at night: frosted (the bottom drawer's frosted glass) and glass, darkened
     final Bitmap nightImage;            // at night: the background (the darkened frosted version)
+    final Bitmap frostImage;            // dark design only: frost as a mutable bitmap, for the drawer
 
     private Backdrop(Bitmap image, int[] frost, int[] glass, Bitmap wide, Bitmap tall, int[] light, int[] lightGlass,
                      int[] night, int[] nightGlass) {
@@ -60,6 +61,12 @@ final class Backdrop {
         this.nightGlass = nightGlass;
         lightImage = light == null ? null : Bitmap.createBitmap(light, FW, FH, Bitmap.Config.ARGB_8888);
         nightImage = night == null ? null : Bitmap.createBitmap(night, FW, FH, Bitmap.Config.ARGB_8888);
+        if (image != null) {
+            frostImage = Bitmap.createBitmap(FW, FH, Bitmap.Config.ARGB_8888);
+            frostImage.setPixels(frost, 0, FW, 0, 0, FW, FH);
+        } else {
+            frostImage = null;
+        }
     }
 
     static Backdrop make(Bitmap src, boolean forLight) {
