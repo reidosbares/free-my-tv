@@ -209,6 +209,18 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private Spring[] drawerFocus = new Spring[0];
     private RectF[] drawerRects = new RectF[0];
     private final RectF weatherCard = new RectF(), quotesCard = new RectF();
+    // Football card (in the drawer, or beside the clock): [0] is the team's card, then one rect per game row drawn.
+    private final RectF footballCard = new RectF();
+    private final RectF[] footballRows = new RectF[9];
+    private int footballRowCount, footballMore;
+    private float footballListTop, footballMoreBase;
+    private boolean footballWide;
+    private FootballRules.Game[] footballGames = new FootballRules.Game[0];
+    private long fbTextAt = -1, fbTextMinute = -1;
+    private int fbTextPrefs = -1;
+    private String fbTextLanguage = "", fbFixture = "", fbWhen = "", fbMoreText = "", fbStale = "";
+    private final String[] fbTime = new String[8], fbTeams = new String[8], fbChannels = new String[8];
+    private final boolean[] fbLive = new boolean[8];
     private final Spring drawer = new Spring(0.46f, 0.92f, 0);
     private boolean drawerOpen;
     private int drawerIndex;
@@ -245,6 +257,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private Paint labelPaint, metaPaint, clockPaint, buttonPaint, capsuleText, tipPaint, quotePaint, staleQuote;
     private Paint rowTitle, drawerLabel, cardTitle, cardText, cardDim, cardDimRight, bigTemp, hourPaint, hourTemp;
+    private Paint fbTeamTitle, fbTeamSub, fbRow, fbRowTime, fbRowRight;
     private Paint pricePaint, changePaint, sheetTitle;
     private TextPaint titlePaint, gridLabel, toastPaint;
     private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -398,6 +411,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             cardFocus[i] = new Spring(0.32f, 0.78f, 0);
             cardRects[i] = new RectF();
         }
+        for (int i = 0; i < footballRows.length; i++) footballRows[i] = new RectF();
         setLightButtons(HomeApps.topButtons());
         recs.setLight(true);
         checkNight(false);
@@ -514,6 +528,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     @Override public void onData() {
         wake();
+        layoutDrawer();   // the football card may have appeared, gone, or changed its row count
         updatePalette();
         checkNight(true);
         layoutStatus();
@@ -636,6 +651,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         cardDim = Ui.numbers(Ui.medium, 23 * k, 0xADFFFFFF);
         cardDimRight = Ui.text(Ui.medium, 21 * k, 0x99FFFFFF);
         cardDimRight.setTextAlign(Paint.Align.RIGHT);
+        fbTeamTitle = Ui.text(Ui.semibold, 28 * k, 0xFFFFFFFF);
+        fbTeamSub = Ui.text(Ui.medium, 22 * k, 0xCCFFFFFF);
+        fbRow = Ui.text(Ui.medium, 25 * k, 0xF2FFFFFF);
+        fbRowTime = Ui.numbers(Ui.medium, 23 * k, 0xADFFFFFF);
+        fbRowRight = Ui.text(Ui.medium, 21 * k, 0x99FFFFFF);
+        fbRowRight.setTextAlign(Paint.Align.RIGHT);
         bigTemp = Ui.numbers(Ui.light, 100 * k, 0xFFFFFFFF);
         hourPaint = Ui.numbers(Ui.medium, 22 * k, 0xADFFFFFF);
         hourPaint.setTextAlign(Paint.Align.CENTER);
@@ -1480,10 +1501,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             x += tw + gap;
         }
         float cardsTop = CARDS_TOP * k, split = left + (right - left) * 0.585f;
-        boolean wx = Prefs.weather(), qt = Prefs.quotes() && HomeData.active().length > 0;
+        // In the drawer, the football card takes the prices card's place.
+        boolean fb = footballPlacement().equals("drawer");
+        boolean wx = Prefs.weather(), qt = fb || (Prefs.quotes() && HomeData.active().length > 0);
         // A card that is off gives its room to the other one.
         weatherCard.set(left, cardsTop, qt ? split - 16 * k : right, cardsTop + CARDS_H * k);
         quotesCard.set(wx ? split + 16 * k : left, cardsTop, right, cardsTop + CARDS_H * k);
+        if (fb) {
+            footballCard.set(quotesCard);
+            layoutFootball(false);
+        }
         drawerDirty = true;
     }
 
@@ -1546,7 +1573,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (int i = 0; i < drawerItems.size(); i++) if (i != top) drawDrawerTile(c, i);
         if (top >= 0) drawDrawerTile(c, top);
         if (Prefs.weather()) drawWeatherCard(c, weatherCard);
-        if (Prefs.quotes() && HomeData.active().length > 0) drawQuotesCard(c, quotesCard);
+        if (footballPlacement().equals("drawer")) drawFootballCard(c, footballCard, false);
+        else if (Prefs.quotes() && HomeData.active().length > 0) drawQuotesCard(c, quotesCard);
     }
 
     /** Square drawer button: symbol and name; an input with no device is dimmed. Focused: white, with dark text. */
@@ -1700,7 +1728,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
     }
 
-    private final Snapshot weatherSnapshot = new Snapshot(), quotesSnapshot = new Snapshot();
+    private final Snapshot weatherSnapshot = new Snapshot(), quotesSnapshot = new Snapshot(), footballSnapshot = new Snapshot();
 
     private void drawPrices(Canvas c, RectF r) {
         float x = r.left + 34 * k, right = r.right - 34 * k;
@@ -1726,6 +1754,158 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             changePaint.setColor(color);
             c.drawText(changeText[i], tmp.centerX(), mid + Ui.halfCap(changePaint), changePaint);
         }
+    }
+
+    // MARK: - Football card
+
+    /** Where the football card is right now: "home" (beside the clock), "drawer", or "off" (no service, no data, or off). */
+    private String footballPlacement() {
+        if (!FootballData.enabled() || !FootballRules.showCard(football.feed)) return "off";
+        return FootballRules.effectivePlacement(Prefs.football(), picksOn());
+    }
+
+    /** Today's games without the team's own (it's on the team card already). */
+    private static FootballRules.Game[] listedGames(FootballRules.Feed f) {
+        if (f.next == null) return f.today;
+        int n = 0;
+        for (FootballRules.Game g : f.today) if (g.id != f.next.id) n++;
+        FootballRules.Game[] out = new FootballRules.Game[n];
+        n = 0;
+        for (FootballRules.Game g : f.today) if (g.id != f.next.id) out[n++] = g;
+        return out;
+    }
+
+    /** Places the team card and the game rows inside footballCard (wide: beside the clock, with channels on each row). */
+    private void layoutFootball(boolean wide) {
+        footballWide = wide;
+        FootballRules.Feed f = football.feed;
+        RectF r = footballCard;
+        float pad = 22 * k, rowH = (wide ? 54 : 46) * k;
+        footballRows[0].set(r.left + pad, r.top + pad, r.right - pad, r.top + pad + (wide ? 118 : 104) * k);
+        footballGames = f == null ? new FootballRules.Game[0] : listedGames(f);
+        footballListTop = footballRows[0].bottom + (wide ? 64 : 12) * k;
+        int fit = (int) Math.max(0, (r.bottom - pad - footballListTop) / rowH);
+        fit = Math.min(fit, footballRows.length - 1);
+        int shown = Math.min(FootballRules.rowsShown(footballGames.length, fit), fbTime.length);
+        footballMore = footballGames.length - shown;
+        for (int i = 0; i < shown; i++) {
+            float y = footballListTop + i * rowH;
+            footballRows[1 + i].set(r.left + pad - 10 * k, y, r.right - pad + 10 * k, y + rowH);
+        }
+        footballRowCount = f != null && f.next != null ? 1 + shown : shown;
+        footballMoreBase = footballListTop + shown * rowH + rowH * 0.66f;
+        fbTextAt = -1;   // the rows changed: make the text again
+    }
+
+    /** Text cut to fit `room` with an ellipsis; layout time only, never in onDraw. */
+    private String fit(String text, Paint p, float room) {
+        fitPaint.set(p);
+        return TextUtils.ellipsize(text, fitPaint, Math.max(0, room), TextUtils.TruncateAt.END).toString();
+    }
+
+    /** Where the team card's stripes start (its text stops before them). */
+    private float footballStripes() {
+        return footballRows[0].right - 18 * k - 6 * 9 * k;
+    }
+
+    private static String fixture(FootballRules.Game g) {
+        return g.home.name + " x " + g.away.name;
+    }
+
+    private static String channelList(FootballRules.Game g) {
+        StringBuilder b = new StringBuilder();
+        for (FootballRules.Channel ch : g.channels) {
+            if (b.length() > 0) b.append(" · ");
+            b.append(ch.name);
+        }
+        return b.toString();
+    }
+
+    /** The card's text, made again only when the data, the settings, the language or the minute change. */
+    private void refreshFootballText() {
+        FootballRules.Feed f = football.feed;
+        long minute = System.currentTimeMillis() / 60_000;
+        if (f == null || (football.fetchedAt == fbTextAt && minute == fbTextMinute && Prefs.version == fbTextPrefs
+                && Ui.language.equals(fbTextLanguage))) return;
+        fbTextAt = football.fetchedAt;
+        fbTextMinute = minute;
+        fbTextPrefs = Prefs.version;
+        fbTextLanguage = Ui.language;
+        if (f.next != null) {
+            fbFixture = fixture(f.next);
+            // Short weekday with the date and time: "seg 26/10 · 20:00" (Android's Portuguese writes "seg.": drop that dot).
+            String when = Ui.datePattern("format|EEE d/M · HH:mm").format(f.next.kickoffMs).replaceFirst("^(\\p{L}+)\\.", "$1");
+            String chs = channelList(f.next);
+            if (f.next.live() && f.next.hasScore()) when = f.next.homeScore + " x " + f.next.awayScore;
+            fbWhen = chs.isEmpty() ? when + " · " + Ui.tr("Broadcast to be confirmed") : footballWide ? when + " · " + chs : when;
+            float room = footballStripes() - 16 * k - (footballRows[0].left + 24 * k);
+            fbFixture = fit(fbFixture, fbTeamTitle, room);
+            fbWhen = fit(fbWhen, fbTeamSub, room);
+        }
+        float tx = footballCard.left + 34 * k + 104 * k, right = footballCard.right - 34 * k;
+        for (int i = 0; i < footballGames.length && i < fbTime.length; i++) {
+            FootballRules.Game g = footballGames[i];
+            fbLive[i] = g.live();
+            fbTime[i] = g.hasScore() && !"scheduled".equals(g.status) ? g.homeScore + " – " + g.awayScore : Ui.time(g.kickoffMs);
+            fbChannels[i] = footballWide ? channelList(g) : "";
+            float teamsRight = fbChannels[i].isEmpty() ? right : right - fbRowRight.measureText(fbChannels[i]) - 20 * k;
+            fbTeams[i] = fit(fixture(g), fbRow, teamsRight - tx);
+        }
+        fbMoreText = Ui.plural("plural|one:+{n} more|other:+{n} more", footballMore);
+        String stale = FootballRules.stale(football.fetchedAt, System.currentTimeMillis())
+                ? HomeData.staleness(football.fetchedAt, 3_600_000L) : "";
+        fbStale = stale.isEmpty() ? "" : Ui.trf("football|Updated {ago}", "ago", stale);
+    }
+
+    private String footballKey() {
+        return football.fetchedAt + "|" + Prefs.version + "|" + Ui.language + "|" + Float.floatToIntBits(dark()) + "|"
+                + System.currentTimeMillis() / 60_000 + "|" + footballRowCount + "|" + footballWide;
+    }
+
+    private void drawFootballCard(Canvas c, RectF r, boolean wide) {
+        drawerCard(c, r);
+        if (Ui.LEGACY) footballSnapshot.draw(c, r, footballKey(), cc -> drawFootball(cc, r));
+        else drawFootball(c, r);
+    }
+
+    private void drawFootball(Canvas c, RectF r) {
+        FootballRules.Feed f = football.feed;
+        if (f == null) return;
+        refreshFootballText();
+        float x = r.left + 34 * k, right = r.right - 34 * k;
+        if (f.next != null) {
+            RectF t = footballRows[0];
+            float radius = 18 * k;
+            fill.setShader(null);
+            fill.setColor(f.teamColor);
+            c.drawRoundRect(t, radius, radius, fill);
+            // The team's colors as a striped edge, inside the straight part of the card.
+            fill.setColor(Ui.alpha(f.teamTextColor, 0.9f));
+            float sw = 9 * k, sx = footballStripes();
+            for (int i = 0; i < 3; i++) c.drawRect(sx + i * 2 * sw, t.top, sx + i * 2 * sw + sw, t.bottom, fill);
+            fbTeamTitle.setColor(f.teamTextColor);
+            fbTeamSub.setColor(Ui.alpha(f.teamTextColor, 0.8f));
+            c.drawText(fbFixture, t.left + 24 * k, t.top + (footballWide ? 50 : 46) * k, fbTeamTitle);
+            c.drawText(fbWhen, t.left + 24 * k, t.top + (footballWide ? 90 : 82) * k, fbTeamSub);
+        }
+        if (footballWide) c.drawText(Ui.tr("Today"), x, footballListTop - 20 * k, cardTitle);
+        fbRow.setColor(drawerInk(0.95f));
+        fbRowTime.setColor(tone(L_DIM, 0xADFFFFFF));
+        fbRowRight.setColor(tone(L_FAINT, 0x99FFFFFF));
+        int first = f.next != null ? 1 : 0;
+        if (footballGames.length == 0) {
+            c.drawText(Ui.tr("No games today"), x, footballListTop + 32 * k, cardDim);
+        }
+        for (int i = 0; i < footballRowCount - first; i++) {
+            RectF row = footballRows[1 + i];
+            float base = row.centerY() + Ui.halfCap(fbRow);
+            fbRowTime.setColor(fbLive[i] ? tone(0xFFD70015, DOWN_COLOR) : tone(L_DIM, 0xADFFFFFF));
+            c.drawText(fbTime[i], x, base, fbRowTime);
+            if (!fbChannels[i].isEmpty()) c.drawText(fbChannels[i], right, base, fbRowRight);
+            c.drawText(fbTeams[i], x + 104 * k, base, fbRow);
+        }
+        if (footballMore > 0) c.drawText(fbMoreText, x, footballMoreBase, cardDim);
+        if (!fbStale.isEmpty()) c.drawText(fbStale, right, r.bottom - 14 * k, cardDimRight);
     }
 
     // MARK: - Focus

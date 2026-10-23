@@ -2,8 +2,6 @@ package io.freemytv;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
@@ -20,19 +18,15 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
  * The football card's data: today's games and the team's next match, from the futebol service at
- * Config.FOOTBALL_URL (github.com/reidosbares/futebol-tv). Fetched off the UI thread like HomeData, the last good
- * response kept so the card shows at once after a restart, and crests downloaded once each.
+ * Config.FOOTBALL_URL (github.com/reidosbares/futebol-tv). Fetched off the UI thread like HomeData, with the last
+ * good response kept so the card shows at once after a restart.
  */
 final class FootballData {
     private static final long EVERY = 5 * 60_000L, LIVE_EVERY = 60_000L, RETRY = 2 * 60_000L;
@@ -56,8 +50,6 @@ final class FootballData {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<HomeData.Listener> listeners = new ArrayList<>();
-    private final Map<String, Bitmap> crests = new HashMap<>();
-    private final Set<String> crestsLoading = new HashSet<>();
     private volatile boolean fetching;
     private volatile long failedAt;
 
@@ -127,36 +119,6 @@ final class FootballData {
             f.today = t;
             notifyListeners();
         }
-    }
-
-    /** The crest at `px` pixels square, or null while it downloads (listeners hear when it arrives). */
-    Bitmap crest(String url, int px) {
-        if (url == null || url.isEmpty() || px <= 0) return null;
-        String key = px + "|" + url;
-        synchronized (crests) {
-            Bitmap b = crests.get(key);
-            if (b != null || crestsLoading.contains(key)) return b;
-            crestsLoading.add(key);
-        }
-        io.execute(() -> {
-            Bitmap scaled = null;
-            try {
-                byte[] bytes = get(url);
-                Bitmap raw = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-                if (raw != null) {
-                    scaled = Bitmap.createScaledBitmap(raw, px, px, true);
-                    if (scaled != raw) raw.recycle();
-                }
-            } catch (Exception e) {
-                AppLog.w("football: crest " + e.getMessage());
-            }
-            synchronized (crests) {
-                crestsLoading.remove(key);
-                if (scaled != null) crests.put(key, scaled);
-            }
-            if (scaled != null) notifyListeners();
-        });
-        return null;
     }
 
     private void notifyListeners() {
