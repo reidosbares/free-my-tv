@@ -58,6 +58,8 @@ final class Backgrounds {
     private volatile Backdrop decoded;
     private volatile boolean decoding;
     private volatile long failedAt;
+    private String lastWord;   // Surprise me's last search word (on io; kept in state.json)
+    private final java.util.Random random = new java.util.Random();
     private volatile int failCode;   // the HTTP code of the last failure (0: none, or not HTTP)
     private boolean loaded;
 
@@ -255,7 +257,14 @@ final class Backgrounds {
         if (failedAt != 0 && now >= failedAt && now < BackgroundRules.retryAt(failedAt)) return;
         String theme = Prefs.bgTheme();
         try {
-            String url = BackgroundRules.randomUrl(theme);
+            String word = null;
+            String url;
+            if ("surprise".equals(theme)) {
+                word = BackgroundRules.surpriseWord(lastWord, random);
+                url = BackgroundRules.randomUrl(theme, word);
+            } else {
+                url = BackgroundRules.randomUrl(theme);
+            }
             String src = BackgroundRules.source(theme);
             if (src != null && src.startsWith("topics=")) {
                 String slug = src.substring("topics=".length());
@@ -272,6 +281,7 @@ final class Backgrounds {
             p.theme = theme;
             download(BackgroundRules.sized(raw, Backdrop.W, Backdrop.H), file("next.jpg"));
             next = p;
+            if (word != null) lastWord = word;
             failedAt = 0;
             failCode = 0;
             save();
@@ -412,6 +422,7 @@ final class Backgrounds {
             JSONObject o = new JSONObject(read(in));
             failedAt = o.optLong("failedAt");
             failCode = o.optInt("failCode");
+            lastWord = o.has("word") ? o.optString("word") : null;
             JSONObject topics = o.optJSONObject("topics");
             if (topics != null) {
                 for (Iterator<String> it = topics.keys(); it.hasNext(); ) {
@@ -434,6 +445,7 @@ final class Backgrounds {
             JSONObject topics = new JSONObject();
             for (Map.Entry<String, String> e : topicIds.entrySet()) topics.put(e.getKey(), e.getValue());
             JSONObject o = new JSONObject().put("failedAt", failedAt).put("failCode", failCode).put("topics", topics);
+            if (lastWord != null) o.put("word", lastWord);
             if (current != null) o.put("current", json(current));
             if (next != null) o.put("next", json(next));
             //noinspection ResultOfMethodCallIgnored

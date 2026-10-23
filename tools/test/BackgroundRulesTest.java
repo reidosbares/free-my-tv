@@ -14,7 +14,19 @@ public final class BackgroundRulesTest {
     }
 
     public static void main(String[] args) {
-        check("nature".equals(theme(null)) && "nature".equals(theme("bogus")) && "travel".equals(theme("travel")), "theme default/valid");
+        check("nature".equals(theme(null)) && "nature".equals(theme("bogus")) && "surprise".equals(theme("surprise")), "theme default/valid");
+        boolean hasSurprise = false, hasTravel = false;
+        for (String t : THEMES) { hasSurprise |= t.equals("surprise"); hasTravel |= t.equals("travel"); }
+        check(hasSurprise && !hasTravel, "surprise replaces travel");
+        check("surprise".equals(theme("travel")), "a stored travel is surprise");
+        check(SURPRISE_WORDS.length == 16 && java.util.Arrays.asList(SURPRISE_WORDS).contains("stadium"), "16 surprise words");
+        java.util.Random rnd = new java.util.Random(7);
+        boolean never = true;
+        for (String w : SURPRISE_WORDS) for (int i = 0; i < 200; i++) never &= !w.equals(surpriseWord(w, rnd));
+        check(never, "surpriseWord never repeats");
+        check(java.util.Arrays.asList(SURPRISE_WORDS).contains(surpriseWord(null, rnd)) && java.util.Arrays.asList(SURPRISE_WORDS).contains(surpriseWord("zzz", rnd)), "surpriseWord from the list");
+        check(randomUrl("surprise", "night sky").contains("query=wallpaper%20night%20sky") && !randomUrl("surprise", "night sky").contains("client_id"), "surprise url");
+        check(topic("surprise") == null && source("surprise") != null, "surprise is a search, not a topic");
         check(source("plain") == null, "plain has no source");
         check(randomUrl("aerials").contains("query=aerial%20view") || randomUrl("aerials").contains("query=aerial+view"), "aerials is a search");
         check(randomUrl("nature").startsWith("https://api.unsplash.com/photos/random?orientation=landscape&content_filter=high&"), "base url");

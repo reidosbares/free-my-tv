@@ -129,7 +129,7 @@ Free, and it takes two minutes: create an account at [themoviedb.org](https://ww
 
 ### The Unsplash key (optional)
 
-Free too: at [unsplash.com/developers](https://unsplash.com/developers), sign in, choose *New Application*, and copy its *Access Key*. Paste it after `unsplash_key=`. The home screen then shows a photo of the theme you pick in *Home Settings* (Nature, Aerials, Abstract, Architecture or Travel), a new one every hour or every day, or the one you keep. It's your key: don't share it.
+Free too: at [unsplash.com/developers](https://unsplash.com/developers), sign in, choose *New Application*, and copy its *Access Key*. Paste it after `unsplash_key=`. The home screen then shows a photo of the theme you pick in *Home Settings* (Nature, Aerials, Abstract, Architecture or Surprise me), a new one every hour or every day, or the one you keep. It's your key: don't share it.
 
 ### Opening a title, not just its app (optional)
 

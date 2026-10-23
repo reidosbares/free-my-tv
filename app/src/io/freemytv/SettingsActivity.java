@@ -826,7 +826,7 @@ public class SettingsActivity extends Activity {
                 case "aerials": return Ui.tr("Aerials");
                 case "abstract": return Ui.tr("Abstract");
                 case "architecture": return Ui.tr("Architecture");
-                case "travel": return Ui.tr("Travel");
+                case "surprise": return Ui.tr("Surprise me");
                 case "plain": return Ui.tr("Plain");
                 default: return Ui.tr("Nature");
             }
