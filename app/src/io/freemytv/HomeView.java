@@ -1162,7 +1162,18 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             softShadow(lClock);
             softShadow(lWeather);
             softShadow(creditPaint);
+            // The football card's text sits on clear glass: the same shadow keeps it readable on a bright photo.
+            textShadow(cardTitle);
+            textShadow(fbRow);
+            textShadow(fbRowTime);
+            textShadow(fbRowRight);
         }
+    }
+
+    /** A tighter, darker shadow for smaller text on clear glass (the soft one is lost on a bright photo). */
+    private void textShadow(Paint p) {
+        if (photo <= 0.001f) p.clearShadowLayer();
+        else p.setShadowLayer(4 * k, 0, 1 * k, Ui.alpha(0xF2000000, photo));
     }
 
     private void softShadow(Paint p) {
@@ -2114,7 +2125,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (footballWide) c.drawText(Ui.tr("Today"), x, footballListTop - 20 * k, cardTitle);
         fbRow.setColor(drawerInk(0.95f));
         fbRowTime.setColor(ink(L_DIM, 0xADFFFFFF, 0xEBFFFFFF));
-        fbRowRight.setColor(ink(L_FAINT, 0x99FFFFFF, 0xD9FFFFFF));
+        fbRowRight.setColor(ink(L_FAINT, 0x99FFFFFF, 0xEBFFFFFF));
         if (footballGames.length == 0 && !FootballRules.teamPlaysToday(f, System.currentTimeMillis())) {
             c.drawText(Ui.tr("No games today"), x, footballListTop + 32 * k, cardDim);
         }
