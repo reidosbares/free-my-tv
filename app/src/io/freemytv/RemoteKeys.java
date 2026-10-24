@@ -7,6 +7,8 @@ import android.os.Build;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 
+import java.io.File;
+
 /**
  * The remote's app buttons on TCL TVs. The stock home screen opens the apps for Netflix, YouTube and Prime (and TCL
  * Channel); with it off, the keys still arrive, so we open the app the person picked (Settings > Remote Buttons).
@@ -40,9 +42,18 @@ final class RemoteKeys {
         return maker.equalsIgnoreCase(Build.MANUFACTURER) || maker.equalsIgnoreCase(Build.BRAND);
     }
 
+    /**
+     * TCL's window manager (TclPhoneWindowManager, in tcl-service.jar) changes the volume each time it is asked about a
+     * volume key, and with a key filter on it is asked twice: before the filter sees the key and again when it's
+     * delivered. One press moved the volume two steps. The first time already moved it, so the key stops here.
+     */
+    private static final boolean TCL_VOLUME_TWICE = TCL && new File("/system_ext/framework/tcl-service.jar").exists();
+
     /** Opens the app for this key on its first press. True if the key is ours and in use (it is then consumed). */
     static boolean onKey(Context c, KeyEvent e) {
         if (!supported()) return false;
+        if (TCL_VOLUME_TWICE && (e.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP
+                || e.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN)) return true;
         // BUTTON_3 is also a game controller's button: keys from a gamepad or a joystick are left alone.
         int source = e.getSource();
         if ((source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
