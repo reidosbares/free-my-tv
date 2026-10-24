@@ -235,6 +235,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final RectF footballCard = new RectF();
     private final RectF[] footballRows = new RectF[9];
     private int footballRowCount, footballMore, footballShown, footballFirst, footballIndex;
+    private int footballScroll;   // today's first game on the top row (Down on the bottom row moves the list)
     private final Spring[] footballFocus = new Spring[9];
     private float footballListTop, footballMoreBase;
     private boolean footballWide;
@@ -1869,7 +1870,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         FootballRules.Feed f = football.feed;
         if (f == null) return null;
         if (row == 0) return f.next;
-        return row - 1 < footballGames.length ? footballGames[row - 1] : null;
+        int i = footballScroll + row - 1;
+        return i < footballGames.length ? footballGames[i] : null;
     }
 
     /** OK on a row: the app of its first channel that is on this TV, or a note saying the app isn't installed. */
@@ -1909,15 +1911,24 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return fixture(g) + ", " + when + (chs.isEmpty() ? "" : ", " + chs);
     }
 
-    /** Today's games without the team's own (it's on the team card already). */
+    /** Today's games without the team's own (it's on the team card already), live and upcoming before finished. */
     private static FootballRules.Game[] listedGames(FootballRules.Feed f) {
-        if (f.next == null) return f.today;
+        long now = System.currentTimeMillis();
+        if (f.next == null) return FootballRules.ordered(f.today, now);
         int n = 0;
         for (FootballRules.Game g : f.today) if (g.id != f.next.id) n++;
         FootballRules.Game[] out = new FootballRules.Game[n];
         n = 0;
         for (FootballRules.Game g : f.today) if (g.id != f.next.id) out[n++] = g;
-        return out;
+        return FootballRules.ordered(out, now);
+    }
+
+    /** Moves today's list by one game under a focus that stays on its row. */
+    private void scrollFootball(int d) {
+        footballScroll += d;
+        layoutFootball(footballWide);
+        heroDirty = true;
+        drawerDirty = true;
     }
 
     /** Places the team card and the game rows inside footballCard (wide: beside the clock, with channels on each row). */
@@ -1932,7 +1943,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         int fit = (int) Math.max(0, (r.bottom - pad - footballListTop) / rowH);
         fit = Math.min(fit, footballRows.length - 1);
         int shown = Math.min(FootballRules.rowsShown(footballGames.length, fit), fbTime.length);
-        footballMore = footballGames.length - shown;
+        footballScroll = Math.max(0, Math.min(footballGames.length - shown, footballScroll));
+        footballMore = footballGames.length - footballScroll - shown;
         for (int i = 0; i < shown; i++) {
             float y = footballListTop + i * rowH;
             footballRows[1 + i].set(r.left + pad - 10 * k, y, r.right - pad + 10 * k, y + rowH);
@@ -2058,8 +2070,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             fbWhen = fit(fbWhen, fbTeamSub, room);
         }
         float tx = footballCard.left + 34 * k + 104 * k, right = footballCard.right - 34 * k;
-        for (int i = 0; i < footballGames.length && i < fbTime.length; i++) {
-            FootballRules.Game g = footballGames[i];
+        for (int i = 0; i < footballShown; i++) {
+            FootballRules.Game g = footballGames[footballScroll + i];
             fbLive[i] = g.liveAt(System.currentTimeMillis());
             fbTime[i] = g.hasScore() && !"scheduled".equals(g.status) ? g.homeScore + " – " + g.awayScore
                     : g.timeKnown ? Ui.time(g.kickoffMs) : "—";
@@ -2075,7 +2087,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private String footballKey() {
         return football.fetchedAt + "|" + Prefs.version + "|" + Ui.language + "|" + Float.floatToIntBits(dark()) + "|"
-                + Float.floatToIntBits(clearLook()) + "|" + System.currentTimeMillis() / 60_000 + "|" + footballRowCount + "|" + footballWide
+                + Float.floatToIntBits(clearLook()) + "|" + System.currentTimeMillis() / 60_000 + "|" + footballRowCount + "|" + footballScroll + "|" + footballWide
                 + "|" + System.identityHashCode(football.crests);
     }
 
@@ -3578,7 +3590,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 boolean home = footballPlacement().equals("home");
                 if (dx != 0) return true;
                 if (dy < 0) {
-                    if (footballIndex > footballFirst) footballIndex--;
+                    if (footballIndex > 1 && footballIndex <= footballShown) footballIndex--;
+                    else if (footballIndex == 1 && footballScroll > 0) scrollFootball(-1);
+                    else if (footballIndex > footballFirst) footballIndex--;
                     else if (!home) zone = Z_DRAWER;
                     else if (!lightButtons.isEmpty()) {
                         zone = Z_TOP;
@@ -3586,6 +3600,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     } else return true;
                 } else {
                     if (footballIndex < footballShown) footballIndex++;
+                    else if (footballMore > 0) scrollFootball(1);
                     else if (home) zone = Z_SHELF;
                     else return true;
                 }

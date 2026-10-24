@@ -81,6 +81,12 @@ public final class FootballRulesTest {
         check(rowsShown(3, 3) == 3 && moreCount(3, 3) == 0, "3 games fit in 3 rows");
         check(rowsShown(2, 0) == 0 && moreCount(2, 0) == 2, "no room: nothing drawn, all counted");
         check(!showCard(null) && !showCard(new Feed()), "no data, no card");
+        Game done1 = at(2026, 10, 24, 11, 0, "finished"), done2 = at(2026, 10, 24, 16, 0, "finished");
+        Game live = at(2026, 10, 24, 17, 0, "live"), stale = at(2026, 10, 24, 9, 0, "live");
+        Game later = at(2026, 10, 24, 21, 0, "scheduled"), soon = at(2026, 10, 24, 19, 0, "scheduled");
+        long fivePm = brt(2026, 10, 24, 17, 30);
+        check(Arrays.equals(ordered(games(done2, later, done1, live, stale, soon), fivePm),
+                games(live, soon, later, stale, done1, done2)), "live and upcoming by kickoff, then finished by kickoff");
         Feed f = new Feed();
         f.next = at(2026, 10, 26, 20, 0, "scheduled");
         check(showCard(f), "a next match alone is enough");

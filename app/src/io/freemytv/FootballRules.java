@@ -1,6 +1,7 @@
 package io.freemytv;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
@@ -124,6 +125,18 @@ final class FootballRules {
         List<Game> out = new ArrayList<>();
         for (Game g : games) if (g.liveAt(nowMs) || dayOf(g.kickoffMs) == today) out.add(g);
         return out.toArray(new Game[0]);
+    }
+
+    /** Live and upcoming games first, then the finished ones (a stale live one counts as finished), each by kickoff. */
+    static Game[] ordered(Game[] games, long nowMs) {
+        Game[] out = games.clone();
+        Arrays.sort(out, (a, b) -> over(a, nowMs) != over(b, nowMs) ? (over(a, nowMs) ? 1 : -1)
+                : Long.compare(a.kickoffMs, b.kickoffMs));
+        return out;
+    }
+
+    private static boolean over(Game g, long nowMs) {
+        return "finished".equals(g.status) || (g.live() && !g.liveAt(nowMs));
     }
 
     /** How many game rows to draw: when they don't all fit, the last row becomes "+N more". */
