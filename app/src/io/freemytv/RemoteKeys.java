@@ -3,9 +3,13 @@ package io.freemytv;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.media.AudioManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.InputDevice;
 import android.view.KeyEvent;
+import android.view.ViewConfiguration;
 
 import java.io.File;
 
@@ -46,14 +50,39 @@ final class RemoteKeys {
      * TCL's window manager (TclPhoneWindowManager, in tcl-service.jar) changes the volume each time it is asked about a
      * volume key, and with a key filter on it is asked twice: before the filter sees the key and again when it's
      * delivered. One press moved the volume two steps. The first time already moved it, so the key stops here.
+     * The system makes a held button's repeats from the key it delivers, so with the key kept here they're made here.
      */
     private static final boolean TCL_VOLUME_TWICE = TCL && new File("/system_ext/framework/tcl-service.jar").exists();
+    /** Repeats for a held button stop after this many, in case its release never arrives. */
+    private static final int MAX_VOLUME_REPEATS = 100;
+    private static Handler volumeHandler;
+
+    private static void onVolumeKey(Context c, KeyEvent e) {
+        if (volumeHandler == null) volumeHandler = new Handler(Looper.getMainLooper());
+        volumeHandler.removeCallbacksAndMessages(null);
+        if (e.getAction() != KeyEvent.ACTION_DOWN || e.getRepeatCount() != 0) return;
+        final AudioManager audio = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
+        final int direction = e.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP
+                ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER;
+        Runnable repeat = new Runnable() {
+            int repeats;
+
+            @Override public void run() {
+                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI);
+                if (++repeats < MAX_VOLUME_REPEATS) volumeHandler.postDelayed(this, ViewConfiguration.getKeyRepeatDelay());
+            }
+        };
+        volumeHandler.postDelayed(repeat, ViewConfiguration.getKeyRepeatTimeout());
+    }
 
     /** Opens the app for this key on its first press. True if the key is ours and in use (it is then consumed). */
     static boolean onKey(Context c, KeyEvent e) {
         if (!supported()) return false;
         if (TCL_VOLUME_TWICE && (e.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP
-                || e.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN)) return true;
+                || e.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            onVolumeKey(c, e);
+            return true;
+        }
         // BUTTON_3 is also a game controller's button: keys from a gamepad or a joystick are left alone.
         int source = e.getSource();
         if ((source & InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
